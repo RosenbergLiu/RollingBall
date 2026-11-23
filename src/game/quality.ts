@@ -30,16 +30,31 @@ export interface GovernorOptions {
   slowFrame: number;
   /** Frames ignored after a reset or a change (loading hitches, shader compiles). */
   warmup: number;
+  /** Average frame time below which a better level is tried (seconds). */
+  fastFrame: number;
+  /** Consecutive fast windows needed before stepping up. */
+  upWindows: number;
 }
 
-const DEFAULTS: GovernorOptions = { window: 90, slowFrame: 1 / 48, warmup: 45 };
+const DEFAULTS: GovernorOptions = { window: 90, slowFrame: 1 / 48, warmup: 45, fastFrame: 1 / 56, upWindows: 3 };
 
-/** Watches frame times and lowers quality while the game cannot hold ~48+ fps. */
+/**
+ * Watches frame times: steps quality down while the game cannot hold ~48 fps and back up
+ * once it runs at ~60 fps again. Stepping back up matters because slow frames are not
+ * always the GPU's fault: Low Power Mode caps web content at 30 fps, and a busy moment
+ * (another app, thermal throttling) can pass. A level that fails right after a step up
+ * is not tried again during the session, so quality does not flip back and forth.
+ */
 export class QualityGovernor {
   level: number;
   private frames = 0;
   private time = 0;
   private warmup: number;
+  private fastWindows = 0;
+  /** Best (lowest-index) level allowed this session. */
+  private ceiling = 0;
+  /** The last change was a step up that still has to prove itself. */
+  private probing = false;
   private readonly opts: GovernorOptions;
 
   constructor(
@@ -77,11 +92,27 @@ export class QualityGovernor {
     const avg = this.time / this.frames;
     this.frames = 0;
     this.time = 0;
-    if (avg > this.opts.slowFrame && this.level < this.levels.length - 1) {
+    const probing = this.probing;
+    this.probing = false;
+
+    if (avg > this.opts.slowFrame) {
+      this.fastWindows = 0;
+      if (this.level >= this.levels.length - 1) return false;
       this.level++;
+      // The better level we just tried could not hold up: stay below it.
+      if (probing) this.ceiling = this.level;
       this.warmup = this.opts.warmup;
       return true;
     }
+    if (avg < this.opts.fastFrame && this.level > this.ceiling) {
+      if (++this.fastWindows < this.opts.upWindows) return false;
+      this.fastWindows = 0;
+      this.level--;
+      this.probing = true;
+      this.warmup = this.opts.warmup;
+      return true;
+    }
+    this.fastWindows = 0;
     return false;
   }
 }

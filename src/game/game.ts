@@ -51,6 +51,9 @@ export class Game {
   private readonly ui: UI;
   private readonly input: TouchInput;
   private readonly quality = new QualityGovernor(buildQualityLevels(window.devicePixelRatio), loadQualityLevel());
+  /** Frame-rate report for device testing (Xcode / devicectl console). */
+  private statFrames = 0;
+  private statTime = 0;
 
   private level: BuiltLevel | null = null;
   private view: LevelView | null = null;
@@ -174,6 +177,21 @@ export class Game {
     this.input.setEnabled(mode === 'play');
     this.respawn();
     this.quality.reset();
+  }
+
+  /** Logs the average frame rate every 10 seconds (ignores pauses in the app). */
+  private reportFrameRate(dt: number): void {
+    if (!(dt > 0) || dt > 0.25) return;
+    this.statFrames++;
+    this.statTime += dt;
+    if (this.statTime < 10) return;
+    const q = this.quality.current;
+    console.info(
+      `[perf] ${(this.statFrames / this.statTime).toFixed(1)} fps · quality ${this.quality.level} ` +
+        `(pixelRatio ${q.pixelRatio}, shadows ${q.shadowMapSize}) · ${this.mode} level ${this.level?.def.id ?? '-'}`,
+    );
+    this.statFrames = 0;
+    this.statTime = 0;
   }
 
   /** Applies the governor's current render resolution and shadow detail. */
@@ -322,6 +340,7 @@ export class Game {
     this.lastTime = now;
     this.elapsed += dt;
     if (this.quality.sample(rawDt)) this.applyQuality();
+    this.reportFrameRate(rawDt);
 
     if (this.level && !this.paused) {
       this.accumulator += dt;

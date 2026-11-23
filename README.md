@@ -54,6 +54,10 @@ To run on a real iPad, set your signing team in Xcode (App target → Signing & 
 
 - **Minimum: iPadOS 15.0.** That covers the iPad Pro (2nd generation, 2017: 12.9-inch and
   10.5-inch, A10X), which runs iPadOS 15, 16 and 17, and every newer iPad.
+- **Target device:** iPad Pro 12.9-inch (2nd generation), model **MQDD2X/A** (identifier
+  `iPad7,1`, A10X, 4 GB, 2732×2048) on **iPadOS 17.7.11**, its final iPadOS version.
+  The device build is checked: the app and the Capacitor frameworks are `arm64` with a
+  minimum OS of 15.0.
 - iPadOS 15 is also the floor for the tech: Xcode 27 and Capacitor 8 can't target anything
   older, and three.js needs WebGL 2, which iPad Safari/WebKit first enabled in iPadOS 15.
 - The web bundle is compiled for Safari 15 (`vite.config.ts`). three.js ships syntax that
@@ -61,8 +65,28 @@ To run on a real iPad, set your signing team in Xcode (App target → Signing & 
   iPadOS 15.0–16.3. Rapier's physics WASM only uses WebAssembly features Safari 15 has
   (checked: no SIMD, tail calls or exceptions).
 - **Older, slower GPUs:** the game measures its frame rate and, below ~48 fps, steps
-  down the render resolution and shadow detail (`src/game/quality.ts`). The chosen level
-  is remembered on the device.
+  down the render resolution and shadow detail (`src/game/quality.ts`). It steps back up
+  once it runs at ~60 fps again, for example after Low Power Mode (which caps web content
+  at 30 fps) is switched off. The chosen level is remembered on the device. Debug builds
+  log `[perf] … fps · quality …` every 10 seconds.
+
+### Running on your own iPad
+
+One-time setup:
+
+1. Xcode → Settings → Accounts: sign in with your Apple ID (a free account is enough for
+   your own devices).
+2. Connect the iPad by USB, unlock it and tap **Trust This Computer**.
+3. On the iPad: Settings → Privacy & Security → **Developer Mode** → On (it restarts).
+
+Then build, install and launch with the console attached:
+
+```bash
+TEAM_ID=<your team ID> npm run ios:device
+```
+
+The team ID is shown in Xcode → Settings → Accounts (select the team). With a free account,
+the app has to be reinstalled every 7 days.
 
 ## Game category, parental controls and Screen Time
 
