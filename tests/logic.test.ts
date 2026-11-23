@@ -95,7 +95,17 @@ describe('tracker', () => {
   });
 
   it('does not jump to a lower spiral loop', () => {
-    const level = buildLevel(LEVELS[5]);
+    // A tight 450° spiral: its loops pass about 10 m above each other.
+    const spiral: LevelDef = {
+      id: 99,
+      name: 'spiral',
+      tagline: '',
+      grade: 0.15,
+      segments: [straight(8), left(450, 11), straight(8)],
+      width: [[0, 5]],
+      theme,
+    };
+    const level = buildLevel(spiral);
     const t = new PathTracker(level);
     const s = ENTRANCE_LENGTH + 8 + 10;
     t.reset(s);

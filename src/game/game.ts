@@ -4,13 +4,14 @@ import { Autopilot } from './autopilot';
 import { emptyCoinCounts, rollCoins, totalCoins, touchedCoins, type CoinCounts, type SpawnedCoin } from './coins';
 import { CoinField } from './coinView';
 import { haptics } from './haptics';
-import { TouchInput } from './input';
+import { Controls } from './input';
 import { buildLevel, hasFallen, hasFinished, spawnPoint, type BuiltLevel } from './level';
 import { LEVELS } from './levels';
 import { PhysicsWorld, PHYSICS, type Vec3 } from './physics';
 import { buildPlatform } from './platform';
 import { isUnlocked, nextPlayableLevel, recordCompletion, type ProgressData } from './progress';
-import { saveProgress, saveWallet } from './storage';
+import type { Settings } from './settings';
+import { saveProgress, saveSettings, saveWallet } from './storage';
 import { buildQualityLevels, QualityGovernor } from './quality';
 import { PathTracker } from './tracker';
 import { Environment, LevelView, createBall } from './view';
@@ -51,7 +52,9 @@ export class Game {
   private readonly env: Environment;
   private readonly ball: THREE.Mesh;
   private readonly ui: UI;
-  private readonly input: TouchInput;
+  private readonly controls: Controls;
+  /** Where the settings were opened from, so Done goes back there. */
+  private settingsFrom: 'menu' | 'pause' | null = null;
   private readonly quality = new QualityGovernor(buildQualityLevels(window.devicePixelRatio), loadQualityLevel());
   /** Frame-rate report for device testing (Xcode / devicectl console). */
   private statFrames = 0;
@@ -102,6 +105,7 @@ export class Game {
     root: HTMLElement,
     private progress: ProgressData,
     private wallet: Wallet,
+    private readonly settings: Settings,
   ) {
     const canvas = document.createElement('canvas');
     canvas.className = 'scene';
@@ -143,10 +147,20 @@ export class Game {
         if (id <= LEVELS.length && isUnlocked(this.progress, id)) this.startLevel(id);
       },
       replay: () => this.startLevel(this.level?.def.id ?? 1),
+      settings: () => this.openSettings(),
+      setControl: (mode) => {
+        this.settings.control = mode;
+        void saveSettings(this.settings);
+        this.controls.setMode(mode);
+        this.ui.setControls(mode);
+      },
+      closeSettings: () => this.closeSettings(),
     };
     this.ui = new UI(root, LEVELS, handlers);
-    this.input = new TouchInput(canvas);
-    this.input.onVisual = (v) => this.ui.setTouch(v);
+    this.controls = new Controls(canvas, () => this.ui.joystickGeometry(), settings.control);
+    this.controls.onPushVisual = (v) => this.ui.setTouch(v);
+    this.controls.onJoystickVisual = (v) => this.ui.setJoystick(v);
+    this.ui.setControls(this.controls.mode);
 
     window.addEventListener('resize', this.resize);
     // Leaving the app (home gesture, app switcher, a Screen Time limit or Downtime
@@ -171,13 +185,15 @@ export class Game {
     this.paused = false;
     this.mode = 'menu';
     this.covered = true;
-    this.input.setEnabled(false);
+    this.settingsFrom = null;
+    this.controls.setEnabled(false);
     this.ui.showMenu(nextPlayableLevel(this.progress, LEVELS.length), this.wallet);
   }
 
   private startLevel(id: number): void {
     this.paused = false;
     this.covered = false;
+    this.settingsFrom = null;
     this.loadLevel(id);
     this.ui.showPlaying(this.level!.def);
   }
@@ -208,7 +224,7 @@ export class Game {
     this.autopilot = new Autopilot(level);
     this.mode = 'play';
     this.falls = 0;
-    this.input.setEnabled(true);
+    this.controls.setEnabled(true);
     this.respawn();
     this.spawnCoins();
     this.quality.reset();
@@ -319,8 +335,22 @@ export class Game {
   private setPaused(on: boolean): void {
     if (this.mode !== 'play' || (on && this.phase === 'won')) return;
     this.paused = on;
-    this.input.setEnabled(!on);
+    this.controls.setEnabled(!on);
     this.ui.showPause(on);
+  }
+
+  /** Settings open over the main menu, or (while paused) in place of the pause menu. */
+  private openSettings(): void {
+    this.settingsFrom = this.mode === 'play' ? 'pause' : 'menu';
+    if (this.settingsFrom === 'pause') this.ui.showPause(false);
+    this.ui.setControls(this.controls.mode);
+    this.ui.showSettings(true);
+  }
+
+  private closeSettings(): void {
+    this.ui.showSettings(false);
+    if (this.settingsFrom === 'pause' && this.mode === 'play' && this.paused) this.ui.showPause(true);
+    this.settingsFrom = null;
   }
 
   private onFall(): void {
@@ -338,6 +368,8 @@ export class Game {
     this.phaseTime = 0;
     this.physics.setBraking(true);
     if (this.mode !== 'play') return;
+    // Nothing to steer on the win screen.
+    this.controls.setEnabled(false);
     const def = this.level!.def;
     const result = recordCompletion(this.progress, def.id, this.runTime, LEVELS.length);
     this.progress = result.progress;
@@ -371,7 +403,7 @@ export class Game {
       this.autopilot!.compute(this.tracker!, this.currPos, this.physics.ball.linvel(), a);
       return;
     }
-    const v = this.input.vector();
+    const v = this.controls.vector();
     if (!v.active) return;
     if (!this.timerRunning) {
       this.timerRunning = true;

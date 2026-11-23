@@ -12,6 +12,7 @@ import {
   type CoinColor,
 } from '../src/game/coins';
 import { buildLevel } from '../src/game/level';
+import { straight } from '../src/game/path';
 import { LEVELS } from '../src/game/levels';
 import { initPhysics } from '../src/game/physics';
 import { addCoin, emptyWallet, sanitizeWallet } from '../src/game/wallet';
@@ -44,6 +45,8 @@ describe('coin spots in the level catalog', () => {
   it('flags spots in holes, near edges, overlapping or past the finish', () => {
     const level = buildLevel({
       ...LEVELS[0],
+      segments: [straight(50, 0.1)],
+      width: [[0, 10]],
       holes: [{ s: 20, u: 0, r: 1.2 }],
       coins: [
         { s: 20, u: 0 }, // in the hole

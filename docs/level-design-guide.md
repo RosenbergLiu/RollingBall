@@ -133,8 +133,8 @@ Facts about the format:
   `coinSpots` come from `src/game/coins.ts`.
 - Exactly **one continuous ribbon** per level: no forks, no gaps, no separate platforms.
   §5 shows how to fake forks today; §7 proposes the real thing.
-- The route may pass **over itself** only with a big vertical gap (as in the Spiral level):
-  at least 8 m between the two surfaces at the crossing.
+- The route may pass **over itself** only with a big vertical gap (as in Overpass, level 8):
+  at least 8 m between the two surfaces at the crossing (checked by the tests).
 
 ---
 
@@ -239,7 +239,7 @@ Alternate drops (0.12, 10 m) with short climbs (−0.06, 8 m). That's a slope ch
 
 ### 5.5 Slalom flags
 Notches alternating left and right (holes cutting into the edges, r 0.9–1.1) on a 7 m
-wide straight. The player sways through them. This is the gentle cousin of "Tightrope".
+wide straight. The player sways through them. This is the hook of Slalom (level 7).
 
 ### 5.6 Shapes worth drawing (silhouette variety)
 Seen from above, every level should have its own outline. Some ideas:
@@ -314,8 +314,8 @@ broken:
   coins in mid-air.
 - **Checkpoints (§7.10):** a couple of coins just after a gate make a nice "welcome back".
 - **Hole levels:** to find a safe weaving line between holes, compute the line that
-  stays farthest from holes *and* edges. That is how the Swiss Cheese, Hole Alley and
-  Tightrope coins were placed.
+  stays farthest from holes *and* edges. The Roundabout and Slalom coins follow such
+  lines.
 
 ---
 
@@ -347,6 +347,7 @@ unless the §7 feature you need already exists in the engine.
    - holes stay inside the authored path
    - coin spots follow §5.8: 15–40 of them, clear of edges and holes, not overlapping
    - slopes follow §4: at most 0.2 either way, smooth changes, no climbing in the first 12 m
+   - where the route passes over itself, the surfaces are at least 8 m apart
    - the shape differs from all other levels
    - ids are sequential
 2. `npm run dev`, then in the browser console run `game.startLevel(<id>)` and
@@ -601,19 +602,20 @@ gently). The showcase is a good place for the world's one checkpointed adventure
 4. World 4, Surfaces: ice, boost, music.
 5. World 5, Adventures: ferries, props, longer checkpointed tours.
 
-**Existing levels (don't duplicate the hook).** All eight only go downhill, so new levels
-should bring in flat and climbing sections for variety.
+**Existing levels (don't duplicate the hook).** World 1 teaches one basic each, from
+concepts A, D, E, C, U and G above plus a tutorial and a slalom. Concepts still free: B, F,
+H–T, V, W.
 
-| # | Name | Hook |
-|---|---|---|
-| 1 | First Roll | Wide straight |
-| 2 | Narrowing | Width funnel |
-| 3 | The Bend | Left/right curves |
-| 4 | Swiss Cheese | Scattered holes |
-| 5 | Serpentine | Tight S-curves |
-| 6 | Spiral Descent | 450° spiral |
-| 7 | Hole Alley | Curves plus holes |
-| 8 | Tightrope | Narrow zig-zag with notches |
+| # | Name | Hook | Feeling |
+|---|---|---|---|
+| 1 | First Roll | Tutorial: a long, wide slope with one slight bend; coins teach steering | Calm |
+| 2 | Lazy River | Big, lazy S-bends; widens into a "lake" on the last bend | Flow |
+| 3 | Roller Coaster | Drops and short climbs, a camel hump, then a sweeping bend home | Rush |
+| 4 | Canyon | Plaza → funnel → chute → plaza, twice (chutes 5.5 m and 4.5 m) | Surprise |
+| 5 | Roundabout | Big island holes in wide plazas; the wide way flips sides | Choice |
+| 6 | Lookout | Three step-ups with flat terraces to a wide lookout, then a swoop down | Effort and reward |
+| 7 | Slalom | Notches on alternate edges, then two "ski gates" | Precision (light) |
+| 8 | Overpass | A 270° loop that rolls under the bridge you started on (9 m+ below) | Wonder |
 
 ---
 

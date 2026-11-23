@@ -19,6 +19,25 @@ describe('level catalog', () => {
     expect(new Set(shapes).size).toBe(LEVELS.length);
   });
 
+  it('keeps at least 8 m between the surfaces wherever a route passes over itself', () => {
+    for (const def of LEVELS) {
+      const { path, widthAt } = buildLevel(def);
+      const every = Math.round(1 / path.ds); // check every meter
+      const S = path.samples;
+      for (let i = 0; i < S.length; i += every) {
+        // Only compare parts of the route at least 20 m apart along the path.
+        for (let j = i + Math.round(20 / path.ds); j < S.length; j += every) {
+          const a = S[i].pos;
+          const b = S[j].pos;
+          const reach = (widthAt(i * path.ds) + widthAt(j * path.ds)) / 2 + 0.5;
+          if (Math.hypot(a.x - b.x, a.z - b.z) < reach) {
+            expect(Math.abs(a.y - b.y), `${def.name}: s ${(i * path.ds).toFixed(0)} over s ${(j * path.ds).toFixed(0)}`).toBeGreaterThan(8);
+          }
+        }
+      }
+    }
+  });
+
   it('keeps every hole inside the authored part of the path', () => {
     for (const def of LEVELS) {
       const level = buildLevel(def);
@@ -38,14 +57,25 @@ describe.each(LEVELS)('level $id: $name', (def) => {
 });
 
 describe('physics rules', () => {
+  // A plain, wide, straight slope, so these rules don't depend on the level catalog.
+  const ramp: LevelDef = {
+    id: 99,
+    name: 'ramp',
+    tagline: '',
+    grade: 0.1,
+    segments: [straight(50)],
+    width: [[0, 10]],
+    theme: LEVELS[0].theme,
+  };
+
   it('a ball left alone on the entrance pad stays there', () => {
-    const r = simulate(LEVELS[0], { maxTime: 3, controller: ({ out }) => ((out.x = 0), (out.y = 0), (out.z = 0)) });
+    const r = simulate(ramp, { maxTime: 3, controller: ({ out }) => ((out.x = 0), (out.y = 0), (out.z = 0)) });
     expect(r.outcome).toBe('timeout');
     expect(Math.abs(r.s - 3)).toBeLessThan(0.2);
   });
 
   it('pushing sideways off the edge counts as a fall', () => {
-    const r = simulate(LEVELS[0], {
+    const r = simulate(ramp, {
       maxTime: 10,
       controller: ({ out }) => {
         out.x = 20;
@@ -57,8 +87,8 @@ describe('physics rules', () => {
   });
 
   it('rolling down the middle at a steady pace drops into a hole', () => {
-    // Level 4 has a hole centered on the middle line; drive straight down it at 6 m/s.
-    const r = simulate(LEVELS[3], {
+    // A hole near the middle line at s = 21 (radius 1.6); drive straight down it at 6 m/s.
+    const r = simulate({ ...ramp, segments: [straight(72)], width: [[0, 12]], holes: [{ s: 21, u: 0.2, r: 1.6 }] }, {
       maxTime: 30,
       controller: ({ tracker, vel, out }) => {
         out.x = -vel.x * 2 - tracker.u * 4;
@@ -73,7 +103,7 @@ describe('physics rules', () => {
   });
 
   it('holding a full push forward cannot exceed the speed cap by much', () => {
-    const r = simulate(LEVELS[0], {
+    const r = simulate(ramp, {
       maxTime: 20,
       controller: ({ tracker, vel, out }) => {
         out.x = -vel.x * 2 - tracker.u * 4;

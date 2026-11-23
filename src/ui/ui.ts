@@ -1,7 +1,8 @@
 import { COIN_COLORS, COIN_HEX, totalCoins, type CoinColor, type CoinCounts } from '../game/coins';
-import type { TouchVisual } from '../game/input';
+import type { JoystickVisual, StickGeometry, TouchVisual } from '../game/input';
 import type { LevelDef } from '../game/level';
 import { isUnlocked, type ProgressData } from '../game/progress';
+import { CONTROL_MODES, type ControlMode } from '../game/settings';
 
 export interface UIHandlers {
   play(): void;
@@ -13,6 +14,10 @@ export interface UIHandlers {
   restart(): void;
   next(): void;
   replay(): void;
+  /** Open the settings (from the main menu or the pause menu). */
+  settings(): void;
+  setControl(mode: ControlMode): void;
+  closeSettings(): void;
 }
 
 export interface WinInfo {
@@ -33,7 +38,7 @@ const COIN_NAMES: Record<CoinColor, string> = { yellow: 'Yellow', blue: 'Blue', 
 /** A small coin icon in the given color. */
 const coinIcon = (color: CoinColor) => `<span class="coin" style="--c:${COIN_HEX[color]}" aria-hidden="true"></span>`;
 
-type Screen = 'loading' | 'menu' | 'levels' | 'hud' | 'gameover' | 'win' | 'pause';
+type Screen = 'loading' | 'menu' | 'levels' | 'hud' | 'gameover' | 'win' | 'pause' | 'settings';
 
 export function formatTime(t: number): string {
   const m = Math.floor(t / 60);
@@ -43,7 +48,28 @@ export function formatTime(t: number): string {
 
 const LOCK = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Z"/></svg>`;
 const PAUSE = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1.2" fill="currentColor"/></svg>`;
+const GEAR = `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3.4"/><circle cx="12" cy="12" r="7"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M5.3 18.7 7 17M17 7l1.7-1.7"/></g></svg>`;
 const CHECK = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
+
+/** Wording for each control mode: settings card, menu help line and in-game hint. */
+const CONTROL_TEXT: Record<ControlMode, { name: string; desc: string; how: string; hint: string; hintSub: string; icon: string }> = {
+  touch: {
+    name: 'Touch',
+    desc: 'Drag anywhere. The ball rolls toward your finger.',
+    how: 'Touch &amp; drag anywhere — the ball is pushed toward your finger.<br/>The farther your finger is from the ball, the stronger the push.',
+    hint: 'Touch &amp; drag — the ball rolls toward your finger',
+    hintSub: 'Farther from the ball = stronger push. Reach the finish line!',
+    icon: `<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="4 5"/><path d="M24 24 33 15" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/><circle cx="24" cy="24" r="4" fill="currentColor"/><circle cx="34" cy="14" r="6.5" fill="currentColor" opacity=".55"/></svg>`,
+  },
+  joystick: {
+    name: 'Joystick',
+    desc: 'Push the stick at the bottom of the screen.',
+    how: 'Push the joystick at the bottom of the screen to roll the ball.<br/>Push it farther for a stronger push.',
+    hint: 'Push the joystick to roll',
+    hintSub: 'Push it farther for more speed. Reach the finish line!',
+    icon: `<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="2.5"/><circle cx="28" cy="20" r="8.5" fill="currentColor"/></svg>`,
+  },
+};
 
 const TEMPLATE = /* html */ `
 <svg class="touch" data-bind="touch" aria-hidden="true">
@@ -66,7 +92,8 @@ const TEMPLATE = /* html */ `
       <div class="wallet" data-bind="wallet" aria-label="Your coins"></div>
       <button class="btn primary big" data-action="play">Play <span data-bind="play-level"></span></button>
       <button class="btn big" data-action="levels">Select Level</button>
-      <p class="how">Touch &amp; drag anywhere — the ball is pushed toward your finger.<br/>The farther your finger is from the ball, the stronger the push.</p>
+      <button class="btn settings-btn" data-action="settings">${GEAR}<span>Settings</span><span class="settings-mode" data-bind="menu-control"></span></button>
+      <p class="how" data-bind="how"></p>
     </div>
   </section>
 
@@ -91,9 +118,10 @@ const TEMPLATE = /* html */ `
     </div>
     <div class="progress"><div class="progress-fill" data-bind="hud-progress"></div></div>
     <div class="hint" data-bind="hint">
-      Touch &amp; drag — the ball rolls toward your finger
-      <small>Farther from the ball = stronger push. Reach the finish line!</small>
+      <span data-bind="hint-text"></span>
+      <small data-bind="hint-sub"></small>
     </div>
+    <div class="joystick" data-bind="joystick" aria-hidden="true"><div class="joystick-knob" data-bind="joystick-knob"></div></div>
   </section>
 
   <section class="banner" data-screen="gameover">
@@ -129,7 +157,29 @@ const TEMPLATE = /* html */ `
         <button class="btn primary big" data-action="resume">Resume</button>
         <button class="btn" data-action="restart">Restart Level</button>
         <button class="btn" data-action="levels">Select Level</button>
+        <button class="btn" data-action="settings">Settings</button>
         <button class="btn" data-action="menu">Main Menu</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen modal" data-screen="settings">
+    <div class="panel dialog settings-dialog">
+      <h2>Settings</h2>
+      <div class="settings-label" id="controls-label">Controls</div>
+      <div class="control-options" role="radiogroup" aria-labelledby="controls-label">
+        ${CONTROL_MODES.map(
+            (m) => `
+        <button class="control-option" role="radio" aria-checked="false" data-action="control" data-mode="${m}">
+          ${CONTROL_TEXT[m].icon}
+          <span class="control-name">${CONTROL_TEXT[m].name}</span>
+          <span class="control-desc">${CONTROL_TEXT[m].desc}</span>
+        </button>`,
+          )
+          .join('')}
+      </div>
+      <div class="actions">
+        <button class="btn primary big" data-action="settings-done">Done</button>
       </div>
     </div>
   </section>
@@ -143,7 +193,7 @@ export class UI {
   private lastProgress = -1;
 
   constructor(
-    root: HTMLElement,
+    private readonly root: HTMLElement,
     private readonly levels: LevelDef[],
     private readonly h: UIHandlers,
   ) {
@@ -181,6 +231,12 @@ export class UI {
         return this.h.next();
       case 'replay':
         return this.h.replay();
+      case 'settings':
+        return this.h.settings();
+      case 'control':
+        return this.h.setControl(el.dataset.mode as ControlMode);
+      case 'settings-done':
+        return this.h.closeSettings();
     }
   }
 
@@ -269,6 +325,39 @@ export class UI {
   showPause(on: boolean): void {
     this.screens.get('pause')!.classList.toggle('visible', on);
     if (on) this.setTouch(null);
+  }
+
+  showSettings(on: boolean): void {
+    this.screens.get('settings')!.classList.toggle('visible', on);
+    if (on) this.setTouch(null);
+  }
+
+  /**
+   * Shows the chosen control mode everywhere: the settings choice, the menu's help line,
+   * the in-game hint and (via the root's data-control) the joystick.
+   */
+  setControls(mode: ControlMode): void {
+    document.documentElement.dataset.control = mode;
+    const text = CONTROL_TEXT[mode];
+    this.bind('menu-control').textContent = text.name;
+    this.bind('how').innerHTML = text.how;
+    this.bind('hint-text').innerHTML = text.hint;
+    this.bind('hint-sub').textContent = text.hintSub;
+    this.root.querySelectorAll<HTMLElement>('.control-option').forEach((el) => {
+      el.setAttribute('aria-checked', String(el.dataset.mode === mode));
+    });
+  }
+
+  /** Where the joystick base is on screen, or null when it isn't shown. */
+  joystickGeometry(): StickGeometry | null {
+    const r = this.bind('joystick').getBoundingClientRect();
+    if (r.width <= 0) return null;
+    return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, r: r.width / 2 };
+  }
+
+  setJoystick(v: JoystickVisual): void {
+    this.bind('joystick').classList.toggle('active', v.active);
+    this.bind('joystick-knob').style.transform = v.active ? `translate(${v.dx}px, ${v.dy}px)` : '';
   }
 
   showWin(info: WinInfo): void {

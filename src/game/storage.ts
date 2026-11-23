@@ -1,9 +1,29 @@
 import { Preferences } from '@capacitor/preferences';
 import { sanitizeProgress, type ProgressData } from './progress';
+import { sanitizeSettings, type Settings } from './settings';
 import { sanitizeWallet, type Wallet } from './wallet';
 
 const KEY = 'rolling-ball-progress-v1';
 const WALLET_KEY = 'rolling-ball-wallet-v1';
+const SETTINGS_KEY = 'rolling-ball-settings-v1';
+
+export async function loadSettings(): Promise<Settings> {
+  try {
+    const { value } = await Preferences.get({ key: SETTINGS_KEY });
+    return sanitizeSettings(value ? JSON.parse(value) : null);
+  } catch (err) {
+    console.warn('Could not load settings', err);
+    return sanitizeSettings(null);
+  }
+}
+
+export async function saveSettings(s: Settings): Promise<void> {
+  try {
+    await Preferences.set({ key: SETTINGS_KEY, value: JSON.stringify(s) });
+  } catch (err) {
+    console.warn('Could not save settings', err);
+  }
+}
 
 export async function loadWallet(): Promise<Wallet> {
   try {

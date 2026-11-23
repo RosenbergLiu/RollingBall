@@ -8,8 +8,13 @@ or gently uphill. Built with
 ## How to play
 
 - The ball always sits in the middle of the screen.
-- Touch and drag anywhere: while your finger is down the ball is pushed toward your finger.
-  The farther your finger is from the ball, the stronger the push. Lift your finger to stop pushing.
+- Pick a control mode in **Settings** (main menu, or the pause menu during a level). The
+  choice is saved on the device.
+  - **Touch** (default): touch and drag anywhere; while your finger is down the ball is
+    pushed toward your finger. The farther your finger is from the ball, the stronger the
+    push. Lift your finger to stop pushing.
+  - **Joystick**: a virtual stick at the bottom center of the screen. Push it the way you
+    want to roll; the farther you push, the stronger the push. Let go and it springs back.
 - Falling off an edge or into a hole is **Game Over**; the ball respawns at the entrance.
 - Collect **coins** by rolling through them: yellow, blue, purple and orange, from most
   common to most rare. Coins only appear on spots designed into each level, and every
@@ -23,14 +28,14 @@ or gently uphill. Built with
 
 | # | Name | What's new |
 |---|------|------------|
-| 1 | First Roll | Wide straight slope |
-| 2 | Narrowing | Width pinches down to 3.6 m |
-| 3 | The Bend | Left and right curves |
-| 4 | Swiss Cheese | Wide slope full of holes |
-| 5 | Serpentine | S-curves |
-| 6 | Spiral Descent | 450° spiral |
-| 7 | Hole Alley | Curves with holes |
-| 8 | Tightrope | Narrow zig-zag with edge notches |
+| 1 | First Roll | Tutorial: long, wide slope with a slight bend |
+| 2 | Lazy River | Big, lazy S-bends |
+| 3 | Roller Coaster | Hills: drops and short climbs |
+| 4 | Canyon | Plazas joined by narrow chutes |
+| 5 | Roundabout | Island holes: go left or right |
+| 6 | Lookout | Step-ups to a lookout, then a swoop down |
+| 7 | Slalom | Notches on alternate edges, then ski gates |
+| 8 | Overpass | Loop around and roll under the start bridge |
 
 Levels live in [src/game/levels.ts](src/game/levels.ts). Each is a list of straight/arc segments
 with a grade (drop per meter: positive is downhill, 0 is flat, negative climbs), width
@@ -101,7 +106,7 @@ the app has to be reinstalled every 7 days. The script signs the app as
 `com.rollingball.game.t<team id>`, because `com.rollingball.game` is already taken at Apple.
 Choose your permanent app ID before publishing to the App Store.
 
-Tested on the target iPad (iPad Pro 12.9-inch 2nd gen, iPadOS 17.7.11): levels 1–5 play
+Tested on the target iPad (iPad Pro 12.9-inch 2nd gen, iPadOS 17.7.11), with the previous level set: levels 1–5 play
 correctly. With Low Power Mode on, iPadOS caps the game at 30 fps and it keeps full
 quality. With it off, the game settles at quality level 2–3 (1.25×–1× resolution, solid
 panels instead of blur) at 55–60 fps. The quality step-down judges each 1.5-second window
@@ -153,6 +158,8 @@ list them under "Other" until the app comes from the App Store or TestFlight.
 - `src/game/physics.ts` – Rapier world, ball body, touch acceleration and speed cap.
 - `src/game/tracker.ts` – follows the ball along the path (progress, lateral offset, height).
 - `src/game/game.ts` – game loop, states, camera, input mapping.
+- `src/game/input.ts` – the control modes: touch and the on-screen joystick.
+- `src/game/settings.ts` – player settings (the control mode), saved with `src/game/storage.ts`.
 - `src/game/view.ts` – Three.js materials, sky, lights, finish gate.
 - `src/ui/ui.ts`, `src/style.css` – menus, level select, HUD, dialogs.
 - `src/game/coins.ts` – coin colors and rarity, coin spot helpers and rules, per-play spawn roll, pickup.

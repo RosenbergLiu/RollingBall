@@ -11,6 +11,8 @@
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
+  /* Diameter of the on-screen joystick (joystick control mode). */
+  --stick: clamp(130px, 24vmin, 190px);
   color-scheme: dark;
 }
 
@@ -249,6 +251,23 @@ svg.touch.visible {
   color: var(--muted);
   font-size: 18px;
   line-height: 1.4;
+}
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.settings-btn svg {
+  width: 22px;
+  height: 22px;
+}
+.settings-mode {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+  font-size: 15px;
 }
 .how {
   margin: 10px 0 0;
@@ -499,6 +518,51 @@ svg.touch.visible {
   opacity: 1;
   transform: translate(-50%, 0);
 }
+/* The joystick sits where the hint usually is: lift the hint above it. */
+[data-control='joystick'] .hint {
+  bottom: calc(26px + var(--stick) + 22px + var(--safe-b));
+}
+
+/* ------------------------------------------------------------------ joystick */
+
+.joystick {
+  position: absolute;
+  left: 50%;
+  bottom: calc(26px + var(--safe-b));
+  width: var(--stick);
+  height: var(--stick);
+  margin-left: calc(var(--stick) / -2);
+  border-radius: 50%;
+  display: none;
+  background: radial-gradient(circle, rgba(9, 13, 28, 0.2) 0 40%, rgba(9, 13, 28, 0.55));
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow:
+    inset 0 0 30px rgba(0, 0, 0, 0.35),
+    0 10px 30px rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  transition: border-color 0.15s;
+}
+[data-control='joystick'] .joystick {
+  display: block;
+}
+.joystick.active {
+  border-color: rgba(255, 255, 255, 0.6);
+}
+.joystick-knob {
+  position: absolute;
+  left: 27%;
+  top: 27%;
+  width: 46%;
+  height: 46%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff, #cbd5e1 45%, #64748b);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  transition: transform 0.18s ease-out;
+}
+.joystick.active .joystick-knob {
+  transition: none;
+}
 
 /* ------------------------------------------------------------------ game over banner */
 
@@ -627,6 +691,94 @@ svg.touch.visible {
   gap: 12px;
 }
 
+/* ------------------------------------------------------------------ settings */
+
+/* Above the main menu, whose panel is lifted over its backdrop with a z-index. */
+.modal[data-screen='settings'] {
+  z-index: 2;
+}
+.settings-dialog {
+  width: min(520px, 100%);
+}
+.settings-label {
+  margin: 0 0 10px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.control-options {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.control-option {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 12px 16px;
+  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    transform 0.08s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.control-option:active {
+  transform: scale(0.97);
+}
+.control-option svg {
+  width: 54px;
+  height: 54px;
+  margin-bottom: 4px;
+  color: var(--muted);
+}
+.control-option[aria-checked='true'] {
+  border-color: var(--accent-a);
+  background: rgba(96, 165, 250, 0.16);
+}
+.control-option[aria-checked='true'] svg {
+  color: var(--accent-a);
+}
+.control-name {
+  font-size: 20px;
+  font-weight: 800;
+}
+.control-desc {
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+@media (max-width: 560px) {
+  .control-options {
+    grid-template-columns: 1fr;
+  }
+  .control-option {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 14px;
+    text-align: left;
+    padding: 12px 16px;
+  }
+  .control-option svg {
+    grid-row: 1 / span 2;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+  }
+}
+
 /* ------------------------------------------------------------------ lighter effects
    Set by the game when rendering quality steps down (older iPads): no backdrop blur,
    which has to be recomputed every frame over the moving 3D scene. */
@@ -634,7 +786,8 @@ svg.touch.visible {
 .lite-fx .panel,
 .lite-fx .pill,
 .lite-fx .btn.round,
-.lite-fx .hint {
+.lite-fx .hint,
+.lite-fx .joystick {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
