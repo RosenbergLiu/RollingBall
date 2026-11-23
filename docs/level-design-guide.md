@@ -18,7 +18,7 @@ flat or climb gently, in any mix. The camera follows behind it and
 the ball stays in the center of the screen. While a finger is on the screen, the ball is
 pushed toward the finger, harder the farther the finger is from the center. Falling off an
 edge or into a hole is **Game Over**, and the ball respawns at the entrance of the level, or
-at the last checkpoint reached once checkpoints exist (§7.10, approved, not built yet).
+at the last checkpoint gate it passed (§7.10).
 Coins float along the route, and touching one collects it into the player's wallet (shown
 on the main menu). Reaching the checkered finish line wins. Levels unlock one by one. The audience is young
 and plays on an iPad, so design for kids and for a touchscreen.
@@ -74,7 +74,7 @@ ahead, so:
   branches look different (rim color, width, decoration).
 
 ### 2.5 Respect the player's time
-A fall sends the ball back to the entrance, or to the last checkpoint once checkpoints exist.
+A fall sends the ball back to the entrance, or to the last checkpoint it passed.
 So a long stretch without a checkpoint makes a fall expensive.
 
 - **Standard levels:** **25–45 seconds** of play for a typical child (about 50–110 m of
@@ -111,6 +111,7 @@ Levels live in `src/game/levels.ts` as `LevelDef` objects (`src/game/level.ts`).
     ...coinLine(20, -2, 30, 2, 5),     // a diagonal line from (s 20, u -2) to (s 30, u 2)
     ...coinSpots([[44, 1.5], [47, 0.5], [50, -0.5]]),   // explicit [s, u] spots
   ],
+  checkpoints: [55, 105],              // OPTIONAL, adventure levels only: gates at these s (§7.10)
   theme: { tileA, tileB, side, rim, skyTop, horizon },   // hex colors
 }
 ```
@@ -135,6 +136,9 @@ Facts about the format:
   §5 shows how to fake forks today; §7 proposes the real thing.
 - The route may pass **over itself** only with a big vertical gap (as in Overpass, level 8):
   at least 8 m between the two surfaces at the crossing (checked by the tests).
+- `checkpoints` lists gate positions (authored `s`, in order). Each must sit on a calm rest
+  area; `checkpointProblems()` in `src/game/level.ts` checks the §7.10 rules. Grand Tour
+  (level 9) is the example.
 
 ---
 
@@ -348,6 +352,7 @@ unless the §7 feature you need already exists in the engine.
    - coin spots follow §5.8: 15–40 of them, clear of edges and holes, not overlapping
    - slopes follow §4: at most 0.2 either way, smooth changes, no climbing in the first 12 m
    - where the route passes over itself, the surfaces are at least 8 m apart
+   - checkpoints follow §7.10, and the autopilot can finish the level from each of them
    - the shape differs from all other levels
    - ids are sequential
 2. `npm run dev`, then in the browser console run `game.startLevel(<id>)` and
@@ -502,7 +507,11 @@ Big set pieces that make a level memorable without touching the gameplay:
 These are cheap ways to make levels distinct. Keep them off the platform and out of the
 camera's way.
 
-### 7.10 Checkpoints ✅ approved by the owner (not built yet)
+### 7.10 Checkpoints ✅ built
+Everything below is implemented: the `checkpoints` field (§3), the rules in
+`checkpointProblems()` (`src/game/level.ts`), the gates in `src/game/view.ts`, respawning in
+`src/game/game.ts`, and the tests in `tests/levels.test.ts`. Grand Tour (level 9) uses three.
+
 A glowing gate across the platform. When the ball rolls through it, the gate lights up and
 a soft chime plays. From then on, a fall respawns the ball **at that gate** instead of at
 the entrance. Checkpoints let "adventure" levels be longer without making falls
@@ -538,21 +547,24 @@ frustrating.
 - **Restart Level** (pause menu) and **Replay** always go back to the entrance and clear all
   checkpoints.
 - **Progress bar:** shows small ticks for checkpoints; reached ones light up.
+- **Feedback:** the gate (two posts, a bar and a line across the track, in the level's rim
+  color) is dim until the ball rolls through it, then flashes and stays lit. A soft
+  two-note chime plays, the iPad gives a light tap, and "Checkpoint!" pops up under the
+  progress bar. After a fall past a gate, the banner says "Back to the checkpoint…".
 
-**Draft data format**
+**Data format**
 ```ts
 checkpoints: [42, 88],   // authored s of each gate, in order
-// with route graphs (§7.1): checkpoints: [{ piece: 'main', s: 42 }]
+// with route graphs (§7.1), later: checkpoints: [{ piece: 'main', s: 42 }]
 ```
 
-**Engine and test notes**
-- The game respawns at the latest activated checkpoint's position (today it uses the
-  fixed spawn point). The tracker resets to that s.
-- A gate mesh, like the finish gate but in the level's rim color, with a lit/unlit state.
-- New tests:
-  - every checkpoint sits on a valid rest area (width, grade, hole-free span)
-  - the autopilot can finish the level when spawned at each checkpoint
-  - spacing and count follow the limits above
+**Rules the tests check** (`checkpointProblems()`)
+- at most 3 gates; each at least 25 m after the start or the previous gate
+- at least 20 m from the last gate to the finish line
+- from 6 m before to 6 m after the gate: straight, grade 0 to 0.06 (never uphill: a
+  respawned ball would roll back through the gate)
+- from 6 m before to 8 m after the gate: at least 6 m wide, and no holes
+- the autopilot can finish the level when started at rest at each gate
 
 ### 7.11 Level intro fly-over
 For about 3 seconds before the start, the camera glides over the whole route, then settles
@@ -603,8 +615,8 @@ gently). The showcase is a good place for the world's one checkpointed adventure
 5. World 5, Adventures: ferries, props, longer checkpointed tours.
 
 **Existing levels (don't duplicate the hook).** World 1 teaches one basic each, from
-concepts A, D, E, C, U and G above plus a tutorial and a slalom. Concepts still free: B, F,
-H–T, V, W.
+concepts A, D, E, C, U and G above plus a tutorial and a slalom, and ends with S (Grand
+Tour), its checkpointed showcase. Concepts still free: B, F, H–R, T, V, W.
 
 | # | Name | Hook | Feeling |
 |---|---|---|---|
@@ -616,6 +628,7 @@ H–T, V, W.
 | 6 | Lookout | Three step-ups with flat terraces to a wide lookout, then a swoop down | Effort and reward |
 | 7 | Slalom | Notches on alternate edges, then two "ski gates" | Precision (light) |
 | 8 | Overpass | A 270° loop that rolls under the bridge you started on (9 m+ below) | Wonder |
+| 9 | Grand Tour | Adventure (~180 m) with 3 checkpoints: island, hills, lookout, slalom bend, sweep home | Wonder |
 
 ---
 

@@ -222,9 +222,23 @@ export class Environment {
 }
 
 /** All meshes that make up one level. */
+interface GateView {
+  rim: THREE.Color;
+  /** Posts and bar. */
+  mat: THREE.MeshBasicMaterial;
+  /** The glowing line across the track. */
+  lineMat: THREE.MeshBasicMaterial;
+  /** Time it lit up, or -1 while unlit. */
+  litAt: number;
+}
+
+/** How long a checkpoint gate flashes when the ball rolls through it (s). */
+const GATE_FLASH = 0.8;
+
 export class LevelView {
   readonly group = new THREE.Group();
   private readonly bannerMat: THREE.MeshBasicMaterial;
+  private readonly gates: GateView[] = [];
 
   constructor(level: BuiltLevel, platform: PlatformMesh) {
     const theme = level.def.theme;
@@ -277,6 +291,38 @@ export class LevelView {
     banner.castShadow = true;
     this.group.add(banner);
 
+    // Checkpoint gates: two posts and a bar in the level's rim color, and a glowing line
+    // across the track. Dim until the ball rolls through, then lit (after a short flash).
+    const gatePostGeo = new THREE.CylinderGeometry(0.1, 0.1, 3.8, 16);
+    for (const cs of level.checkpoints) {
+      const g = pathAt(level.path, cs);
+      const gw = level.widthAt(cs);
+      const rimColor = new THREE.Color(theme.rim);
+      const mat = new THREE.MeshBasicMaterial({ color: rimColor.clone(), toneMapped: false });
+      const lineMat = new THREE.MeshBasicMaterial({
+        color: rimColor.clone(),
+        toneMapped: false,
+        transparent: true,
+        depthWrite: false,
+      });
+      this.group.add(new THREE.Mesh(toGeometry(buildStrip(level, cs - 0.2, cs + 0.2, 0.02)), lineMat));
+      for (const side of [-1, 1]) {
+        const post = new THREE.Mesh(gatePostGeo, mat);
+        post.position.copy(g.pos).addScaledVector(g.right, side * (gw / 2 + 0.35));
+        post.position.y += 3.8 / 2 - 0.9;
+        post.castShadow = true;
+        this.group.add(post);
+      }
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(gw + 0.9, 0.16, 0.16), mat);
+      bar.position.copy(g.pos);
+      bar.position.y += 2.8;
+      bar.lookAt(bar.position.clone().add(new THREE.Vector3(g.tan.x, 0, g.tan.z)));
+      bar.castShadow = true;
+      this.group.add(bar);
+      this.gates.push({ rim: rimColor, mat, lineMat, litAt: -1 });
+    }
+    this.setCheckpoint(-1, 0);
+
     this.group.add(this.createParticles(level, theme));
   }
 
@@ -306,8 +352,32 @@ export class LevelView {
     return new THREE.Points(g, m);
   }
 
+  /** Lights the gates up to and including `reached` (-1: all dim). `time` starts the flash. */
+  setCheckpoint(reached: number, time: number): void {
+    this.gates.forEach((g, i) => {
+      const lit = i <= reached;
+      if (lit && g.litAt < 0) g.litAt = time;
+      if (!lit) g.litAt = -1;
+      g.mat.color.copy(g.rim).multiplyScalar(lit ? 1 : 0.32);
+      g.lineMat.opacity = lit ? 0.85 : 0.3;
+    });
+  }
+
   update(time: number): void {
     this.bannerMat.color.setScalar(0.85 + 0.15 * Math.sin(time * 4));
+    for (const g of this.gates) {
+      if (g.litAt < 0) {
+        // Unlit gates breathe gently, inviting the ball through.
+        g.lineMat.opacity = 0.3 + 0.12 * Math.sin(time * 3);
+        continue;
+      }
+      const t = time - g.litAt;
+      if (t > GATE_FLASH + 0.1) continue;
+      // A white-hot flash that settles into the rim color.
+      const f = Math.max(0, 1 - t / GATE_FLASH);
+      g.mat.color.copy(g.rim).multiplyScalar(1 + 2 * f);
+      g.lineMat.opacity = 0.85 + 0.15 * f;
+    }
   }
 
   dispose(): void {

@@ -14,16 +14,20 @@ export interface SimResult {
 
 export type Controller = (ctx: { tracker: PathTracker; pos: Vec3; vel: Vec3; out: Vec3; t: number }) => void;
 
-/** Runs a level headlessly with the real physics and rules. Defaults to the autopilot. */
-export function simulate(def: LevelDef, opts: { maxTime?: number; controller?: Controller } = {}): SimResult {
+/**
+ * Runs a level headlessly with the real physics and rules. Defaults to the autopilot.
+ * `startS` (absolute s) starts the ball at rest there instead of the entrance, e.g. at a checkpoint.
+ */
+export function simulate(def: LevelDef, opts: { maxTime?: number; controller?: Controller; startS?: number } = {}): SimResult {
   const level = buildLevel(def);
   const platform = buildPlatform(level);
   const physics = new PhysicsWorld();
   physics.setPlatform(platform.topCollider, platform.wallCollider);
   const tracker = new PathTracker(level);
   const pilot = new Autopilot(level);
-  physics.placeBall(spawnPoint(level));
-  tracker.reset(level.spawnS);
+  const startS = opts.startS ?? level.spawnS;
+  physics.placeBall(spawnPoint(level, startS));
+  tracker.reset(startS);
   const accel: Vec3 = { x: 0, y: 0, z: 0 };
   const maxTime = opts.maxTime ?? 120;
   let maxSpeed = 0;

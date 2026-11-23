@@ -5,7 +5,7 @@ import { emptyCoinCounts, rollCoins, totalCoins, touchedCoins, type CoinCounts, 
 import { CoinField } from './coinView';
 import { haptics } from './haptics';
 import { Controls } from './input';
-import { BALL_RADIUS, buildLevel, hasFallen, hasFinished, spawnPoint, type BuiltLevel } from './level';
+import { BALL_RADIUS, buildLevel, hasFallen, hasFinished, passedCheckpoint, spawnPoint, type BuiltLevel } from './level';
 import { LEVELS } from './levels';
 import { PhysicsWorld, PHYSICS, type Vec3 } from './physics';
 import { buildPlatform } from './platform';
@@ -80,6 +80,8 @@ export class Game {
   private runTime = 0;
   private timerRunning = false;
   private falls = 0;
+  /** Index of the furthest checkpoint passed in this run (-1: none): a fall respawns there. */
+  private reachedCheckpoint = -1;
   /** Debug aid: the autopilot plays in play mode (set from the console). */
   autoplay = false;
 
@@ -321,12 +323,12 @@ export class Game {
     console.info(`Rendering quality → level ${this.quality.level}`, q);
   }
 
-  private respawn(): void {
-    const level = this.level!;
-    const p = spawnPoint(level);
+  /** Puts the ball at rest on the centerline at `s`, with the camera snapped behind it. */
+  private placeBallAt(s: number): void {
+    const p = spawnPoint(this.level!, s);
     this.physics.placeBall(p);
     this.physics.setBraking(false);
-    this.tracker!.reset(level.spawnS);
+    this.tracker!.reset(s);
     this.currPos.copy(p);
     this.prevPos.copy(p);
     this.renderPos.copy(p);
@@ -334,16 +336,55 @@ export class Game {
     this.prevQuat.identity();
     this.phase = 'rolling';
     this.phaseTime = 0;
-    this.runTime = 0;
-    this.timerRunning = false;
     this.camFrozen = false;
     this.accumulator = 0;
     this.updateCamera(0, true);
+  }
+
+  /** A fresh run from the entrance: the timer starts over and all checkpoints are cleared. */
+  private respawn(): void {
+    const level = this.level!;
+    this.placeBallAt(level.spawnS);
+    this.runTime = 0;
+    this.timerRunning = false;
+    this.reachedCheckpoint = -1;
+    this.view?.setCheckpoint(-1, this.elapsed);
     if (this.mode === 'play') {
       this.ui.showGameOver(false);
       this.ui.showHint(true);
       this.ui.updateHud(0, this.falls, 0);
+      this.ui.setCheckpoints(level.checkpoints.map((cs) => cs / level.finishS), -1);
     }
+  }
+
+  /**
+   * After a fall past a checkpoint: back at rest on the gate. The run goes on: the timer
+   * keeps counting from the level start, and falls and coins are kept.
+   */
+  private respawnAtCheckpoint(): void {
+    const level = this.level!;
+    const s = level.checkpoints[this.reachedCheckpoint];
+    this.placeBallAt(s);
+    if (this.mode === 'play') {
+      this.ui.showGameOver(false);
+      this.ui.updateHud(this.runTime, this.falls, s / level.finishS);
+    }
+  }
+
+  /** Lights a checkpoint gate as the ball rolls through it on the platform. */
+  private checkCheckpoints(): void {
+    const level = this.level!;
+    const tracker = this.tracker!;
+    if (level.checkpoints.length === 0 || tracker.height < -0.8) return;
+    const k = passedCheckpoint(level.checkpoints, tracker.s, this.reachedCheckpoint);
+    if (k === this.reachedCheckpoint) return;
+    this.reachedCheckpoint = k;
+    this.view?.setCheckpoint(k, this.elapsed);
+    if (this.mode !== 'play') return;
+    this.ui.setCheckpoints(level.checkpoints.map((cs) => cs / level.finishS), k);
+    this.ui.flashCheckpoint();
+    this.sound.checkpoint();
+    haptics.checkpoint();
   }
 
   private setPaused(on: boolean): void {
@@ -373,7 +414,7 @@ export class Game {
     this.camFrozen = true;
     if (this.mode !== 'play') return;
     this.falls++;
-    this.ui.showGameOver(true);
+    this.ui.showGameOver(true, this.reachedCheckpoint >= 0);
     haptics.fall();
   }
 
@@ -455,12 +496,16 @@ export class Game {
     if (this.mode === 'play' && touchedCoins(this.coins, this.currPos).length > 0) this.collectCoins();
     if (hasFallen(level, tracker, t.y)) this.onFall();
     else if (hasFinished(level, tracker)) this.onWin();
+    else this.checkCheckpoints();
   }
 
   private updatePhase(dt: number): void {
     if (this.phase === 'rolling') return;
     this.phaseTime += dt;
-    if (this.phase === 'fallen' && this.phaseTime >= FALL_RESPAWN_DELAY) this.respawn();
+    if (this.phase === 'fallen' && this.phaseTime >= FALL_RESPAWN_DELAY) {
+      if (this.reachedCheckpoint >= 0) this.respawnAtCheckpoint();
+      else this.respawn();
+    }
   }
 
   // ---------------------------------------------------------------- rendering

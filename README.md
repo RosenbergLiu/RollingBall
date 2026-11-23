@@ -16,6 +16,9 @@ or gently uphill. Built with
   - **Joystick**: a virtual stick at the bottom center of the screen. Push it the way you
     want to roll; the farther you push, the stronger the push. Let go and it springs back.
 - Falling off an edge or into a hole is **Game Over**; the ball respawns at the entrance.
+- Long levels have **checkpoints**: glowing gates across the track. Roll through one and it
+  lights up; after a fall the ball comes back at the last gate passed instead of the
+  entrance, and the timer keeps running. Restart Level and Replay start from the entrance.
 - Collect **coins** by rolling through them: yellow, blue, purple and orange, from most
   common to most rare. Coins only appear on spots designed into each level, and every
   play rolls a different set. They go straight into your wallet (shown on the main menu)
@@ -41,6 +44,7 @@ or gently uphill. Built with
 | 6 | Lookout | Step-ups to a lookout, then a swoop down |
 | 7 | Slalom | Notches on alternate edges, then ski gates |
 | 8 | Overpass | Loop around and roll under the start bridge |
+| 9 | Grand Tour | A long adventure with 3 checkpoints |
 
 Levels live in [src/game/levels.ts](src/game/levels.ts). Each is a list of straight/arc segments
 with a grade (drop per meter: positive is downhill, 0 is flat, negative climbs), width
@@ -158,7 +162,7 @@ list them under "Other" until the app comes from the App Store or TestFlight.
 ## Code map
 
 - `src/game/path.ts` – turns segments into a smooth sampled centerline.
-- `src/game/level.ts` – level types, widths, holes, spawn/fall/finish rules.
+- `src/game/level.ts` – level types, widths, holes, spawn/fall/finish rules, checkpoint rules.
 - `src/game/platform.ts` – builds the platform mesh (top, walls, rim, round holes) and colliders.
 - `src/game/physics.ts` – Rapier world, ball body, touch acceleration and speed cap.
 - `src/game/tracker.ts` – follows the ball along the path (progress, lateral offset, height).

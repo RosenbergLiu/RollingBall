@@ -35,6 +35,11 @@ export interface LevelDef {
    * appear on these; each play rolls which spots get a coin and in which color.
    */
   coins?: CoinSpot[];
+  /**
+   * Checkpoint gates (s from the start of the authored segments), in order. Only for long
+   * "adventure" levels; see checkpointProblems() and docs/level-design-guide.md §7.10.
+   */
+  checkpoints?: number[];
   theme: Theme;
 }
 
@@ -91,6 +96,8 @@ export interface BuiltLevel {
   holes: BuiltHole[];
   /** Coin spots with absolute s. */
   coinSpots: CoinSpot[];
+  /** Checkpoint gates with absolute s, in order. */
+  checkpoints: number[];
   spawnS: number;
   finishS: number;
   maxWidth: number;
@@ -137,6 +144,7 @@ export function buildLevel(def: LevelDef): BuiltLevel {
     path,
     holes,
     coinSpots: (def.coins ?? []).map((c) => ({ s: c.s + ENTRANCE_LENGTH, u: c.u })),
+    checkpoints: (def.checkpoints ?? []).map((s) => s + ENTRANCE_LENGTH),
     spawnS: SPAWN_S,
     finishS: path.length - RUNOUT_LENGTH + 1.5,
     maxWidth,
@@ -145,9 +153,91 @@ export function buildLevel(def: LevelDef): BuiltLevel {
   };
 }
 
-export function spawnPoint(level: BuiltLevel): Vector3 {
-  const f = pathAt(level.path, level.spawnS);
+/** Where the ball is placed at rest: on the centerline at `s` (default: the entrance). */
+export function spawnPoint(level: BuiltLevel, s = level.spawnS): Vector3 {
+  const f = pathAt(level.path, s);
   return f.pos.addScaledVector(f.normal, BALL_RADIUS + 0.01);
+}
+
+/** Placement rules for checkpoint gates (also documented in docs/level-design-guide.md §7.10). */
+export const CHECKPOINT_RULES = {
+  /** At most this many gates per level… */
+  max: 3,
+  /** …at least this far apart, and this far from the start of the route. */
+  minGap: 25,
+  /** The last gate is at least this far before the finish line, so it's worth having. */
+  minToFinish: 20,
+  /** The gate sits on a rest area: straight, gentle and wide from this far before it… */
+  restBefore: 6,
+  /** …to this far after it (straight and gentle up to restBefore after it). */
+  restAfter: 8,
+  minWidth: 6,
+  /** Downhill at most this steep, and never uphill (a ball respawned at rest would roll back). */
+  maxGrade: 0.06,
+};
+
+/** The authored segment at authored distance `s`, with its grade. */
+function segmentAt(def: LevelDef, s: number): { seg: Segment; grade: number } | null {
+  let start = 0;
+  for (const seg of def.segments) {
+    const end = start + segmentLength(seg);
+    if (s >= start && s <= end) return { seg, grade: seg.grade ?? def.grade };
+    start = end;
+  }
+  return null;
+}
+
+/**
+ * Every checkpoint rule a level breaks (empty when valid). A respawned ball must start
+ * somewhere calm, never facing a hazard: on a straight, gentle, wide, hole-free rest area.
+ */
+export function checkpointProblems(level: BuiltLevel): string[] {
+  const def = level.def;
+  const R = CHECKPOINT_RULES;
+  const cps = def.checkpoints ?? [];
+  const problems: string[] = [];
+  const authored = def.segments.reduce((sum, seg) => sum + segmentLength(seg), 0);
+  const finishLine = level.finishS - ENTRANCE_LENGTH;
+  if (cps.length > R.max) problems.push(`${cps.length} checkpoints (at most ${R.max})`);
+  cps.forEach((s, i) => {
+    const where = `checkpoint ${i} (s ${s})`;
+    const prev = i === 0 ? 0 : cps[i - 1];
+    if (s - prev < R.minGap) problems.push(`${where} is less than ${R.minGap} m after ${i === 0 ? 'the start' : `checkpoint ${i - 1}`}`);
+    if (finishLine - s < R.minToFinish) problems.push(`${where} is less than ${R.minToFinish} m before the finish line`);
+    if (s + R.restAfter > authored) problems.push(`${where} is too close to the end of the route`);
+    for (let x = s - R.restBefore; x <= s + R.restAfter + 1e-9; x += 0.5) {
+      if (level.widthAt(x + ENTRANCE_LENGTH) < R.minWidth) {
+        problems.push(`${where}: narrower than ${R.minWidth} m at s ${x.toFixed(1)}`);
+        break;
+      }
+    }
+    for (let x = s - R.restBefore; x <= s + R.restBefore + 1e-9; x += 0.5) {
+      const at = segmentAt(def, x);
+      if (!at) continue;
+      if (at.seg.kind !== 'straight') {
+        problems.push(`${where}: not on a straight at s ${x.toFixed(1)}`);
+        break;
+      }
+      if (at.grade < 0 || at.grade > R.maxGrade) {
+        problems.push(`${where}: grade ${at.grade} at s ${x.toFixed(1)} (needs 0 to ${R.maxGrade})`);
+        break;
+      }
+    }
+    for (const h of def.holes ?? []) {
+      if (h.s + h.r > s - R.restBefore && h.s - h.r < s + R.restAfter) problems.push(`${where}: hole at s ${h.s} is too close`);
+    }
+  });
+  return problems;
+}
+
+/**
+ * Index of the furthest checkpoint the ball at `s` has passed (absolute s), or `reached`
+ * if none further. Checkpoints only ever move forward: rolling back doesn't undo one.
+ */
+export function passedCheckpoint(checkpoints: number[], s: number, reached: number): number {
+  let k = reached;
+  for (let i = reached + 1; i < checkpoints.length; i++) if (s >= checkpoints[i]) k = i;
+  return k;
 }
 
 /** Minimal view of the path tracker needed by the rules. */

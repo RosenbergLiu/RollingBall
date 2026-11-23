@@ -376,6 +376,15 @@ export class SoundGraph {
     }
   }
 
+  /** A checkpoint gate: a calm, rising two-note bell over a warm chord, with a little glitter. */
+  gate(when: number): void {
+    const hz = COIN_BASE_HZ * semitoneRatio(-5); // D5, under the coin chimes
+    this.chime(when, hz, 0.3, 0.6);
+    this.chime(when + 0.14, hz * semitoneRatio(7), 0.3, 1.3);
+    this.bloom(when, hz * 2);
+    for (let i = 0; i < 3; i++) this.sparkle(when + 0.18 + i * 0.07, COIN_BASE_HZ * 2.6 * semitoneRatio(COMBO.scale[i * 2]), 0.06);
+  }
+
   /** A coin pickup: the color's arpeggio at `hz`, with glitter; `top` adds a combo sparkle. */
   coin(color: CoinColor, hz: number, when: number, top = false): void {
     const v = COIN_VOICES[color];
@@ -526,6 +535,12 @@ export class Sound {
     // Fade out faster than in: leaving the track or pausing cuts the sound promptly but softly.
     graph.applyRoll(mix, mix.rumble < this.lastRumble ? 0.035 : 0.06);
     this.lastRumble = mix.rumble;
+  }
+
+  /** The chime for rolling through a checkpoint gate. */
+  checkpoint(): void {
+    if (!this.ready()) return;
+    this.graph!.gate(this.ctx!.currentTime + 0.01);
   }
 
   /** A coin pickup chime; quick pickups in a row climb in pitch. */

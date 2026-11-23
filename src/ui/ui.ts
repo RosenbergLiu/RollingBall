@@ -119,6 +119,8 @@ const TEMPLATE = /* html */ `
       </div>
     </div>
     <div class="progress"><div class="progress-fill" data-bind="hud-progress"></div></div>
+    <div class="progress-marks" data-bind="hud-checkpoints" aria-hidden="true"></div>
+    <div class="cp-toast" data-bind="cp-toast" role="status">Checkpoint!</div>
     <div class="hint" data-bind="hint">
       <span data-bind="hint-text"></span>
       <small data-bind="hint-sub"></small>
@@ -128,7 +130,7 @@ const TEMPLATE = /* html */ `
 
   <section class="banner" data-screen="gameover">
     <h2>Game Over</h2>
-    <p>Respawning at the entrance…</p>
+    <p data-bind="gameover-text">Respawning at the entrance…</p>
   </section>
 
   <section class="screen modal" data-screen="win">
@@ -328,9 +330,30 @@ export class UI {
     this.bind('hint').classList.toggle('visible', on);
   }
 
-  showGameOver(on: boolean): void {
+  /** `atCheckpoint`: the ball will come back at the last checkpoint, not the entrance. */
+  showGameOver(on: boolean, atCheckpoint = false): void {
+    if (on) this.bind('gameover-text').textContent = atCheckpoint ? 'Back to the checkpoint…' : 'Respawning at the entrance…';
     this.screens.get('gameover')!.classList.toggle('visible', on);
     if (on) this.setTouch(null);
+  }
+
+  /**
+   * Checkpoint ticks on the progress bar: `marks` are positions 0..1 along the route, and
+   * the ones up to `reached` are lit. An empty list hides them.
+   */
+  setCheckpoints(marks: number[], reached: number): void {
+    const el = this.bind('hud-checkpoints');
+    el.innerHTML = marks
+      .map((m, i) => `<span class="cp-mark${i <= reached ? ' lit' : ''}" style="left:${(Math.min(1, Math.max(0, m)) * 100).toFixed(2)}%"></span>`)
+      .join('');
+  }
+
+  /** A short "Checkpoint!" pop under the progress bar. */
+  flashCheckpoint(): void {
+    const t = this.bind('cp-toast');
+    t.classList.remove('show');
+    void t.offsetWidth; // restart the animation
+    t.classList.add('show');
   }
 
   showPause(on: boolean): void {

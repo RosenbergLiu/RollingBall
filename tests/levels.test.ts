@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Autopilot } from '../src/game/autopilot';
-import { buildLevel, holeDistance, MAX_GRADE, slopeProblems, type LevelDef } from '../src/game/level';
+import { buildLevel, checkpointProblems, holeDistance, MAX_GRADE, passedCheckpoint, slopeProblems, type LevelDef } from '../src/game/level';
 import { right, straight } from '../src/game/path';
 import { LEVELS } from '../src/game/levels';
 import { initPhysics, PHYSICS } from '../src/game/physics';
@@ -221,5 +221,54 @@ describe('slopes: routes may go down, run flat or climb', () => {
     };
     expect(slopeProblems(def)).toEqual([]);
     expect(simulate(def)).toMatchObject({ outcome: 'won' });
+  });
+});
+
+describe('checkpoints', () => {
+  it('every catalog checkpoint sits on a calm rest area', () => {
+    for (const def of LEVELS) expect(checkpointProblems(buildLevel(def)), def.name).toEqual([]);
+  });
+
+  it.each(LEVELS.filter((l) => (l.checkpoints ?? []).length > 0))(
+    'level $id ($name) can be finished from each of its checkpoints',
+    (def) => {
+      for (const cs of buildLevel(def).checkpoints) {
+        const r = simulate(def, { startS: cs });
+        expect(r, `from checkpoint at s ${cs}: reached s=${r.s.toFixed(1)}`).toMatchObject({ outcome: 'won' });
+      }
+    },
+  );
+
+  it('flags gates on a curve or a climb, near a hole, too close together, to the start or to the finish', () => {
+    const def: LevelDef = {
+      id: 99,
+      name: 'checkpoints',
+      tagline: '',
+      grade: 0.05,
+      segments: [straight(30), right(90, 20), straight(20, -0.05), straight(40, 0.03)],
+      width: [[0, 8]],
+      holes: [{ s: 103, u: 2, r: 1 }],
+      checkpoints: [10, 45, 70, 100, 110],
+      theme: LEVELS[0].theme,
+    };
+    const problems = checkpointProblems(buildLevel(def)).join('\n');
+    expect(problems).toMatch(/5 checkpoints \(at most 3\)/);
+    expect(problems).toMatch(/checkpoint 0 .* after the start/);
+    expect(problems).toMatch(/checkpoint 1 .* not on a straight/);
+    expect(problems).toMatch(/checkpoint 2 .* grade -0.05/);
+    expect(problems).toMatch(/checkpoint 3 .* hole/);
+    expect(problems).toMatch(/checkpoint 4 .* after checkpoint 3/);
+    expect(problems).toMatch(/checkpoint 4 .* before the finish line/);
+    expect(problems).not.toMatch(/checkpoint 3 .* (straight|grade|narrower)/);
+  });
+
+  it('activate in order, only forward: rolling back never undoes one', () => {
+    const cps = [10, 20, 30];
+    expect(passedCheckpoint(cps, 5, -1)).toBe(-1);
+    expect(passedCheckpoint(cps, 12, -1)).toBe(0);
+    expect(passedCheckpoint(cps, 25, 0)).toBe(1);
+    expect(passedCheckpoint(cps, 35, -1)).toBe(2); // the furthest one passed wins
+    expect(passedCheckpoint(cps, 5, 1)).toBe(1); // rolled back behind the gate
+    expect(passedCheckpoint([], 50, -1)).toBe(-1);
   });
 });
