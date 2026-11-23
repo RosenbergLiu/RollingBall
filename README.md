@@ -19,7 +19,12 @@ or gently uphill. Built with
 - Collect **coins** by rolling through them: yellow, blue, purple and orange, from most
   common to most rare. Coins only appear on spots designed into each level, and every
   play rolls a different set. They go straight into your wallet (shown on the main menu)
-  and are kept even if you fall. Coins have no use yet.
+  and are kept even if you fall. Coins have no use yet. A coin bursts into sparks with a
+  chime when you grab it; grab several quickly and the chimes climb higher. Rarer coins
+  sound (and burst) fancier, and orange is a jackpot.
+- **Sound:** the ball rumbles and clicks over the tiles faster as it speeds up. Sound
+  effects can be switched off in **Settings**. They follow the iPad's mute setting and mix
+  with other audio (for example music playing in another app).
 - Cross the checkered finish line to win, then go to the next level or back to the menu.
 - Levels unlock in order. Locked levels can't be selected from the level menu.
   Progress and best times are saved on the device.
@@ -159,11 +164,14 @@ list them under "Other" until the app comes from the App Store or TestFlight.
 - `src/game/tracker.ts` – follows the ball along the path (progress, lateral offset, height).
 - `src/game/game.ts` – game loop, states, camera, input mapping.
 - `src/game/input.ts` – the control modes: touch and the on-screen joystick.
-- `src/game/settings.ts` – player settings (the control mode), saved with `src/game/storage.ts`.
+- `src/game/settings.ts` – player settings (control mode, sound on/off), saved with `src/game/storage.ts`.
+- `src/game/sound.ts` – sound effects synthesized with the Web Audio API (no audio files): the
+  rolling sound (speed-to-volume rules) and the coin chimes (rarity voices, pickup combo).
 - `src/game/view.ts` – Three.js materials, sky, lights, finish gate.
 - `src/ui/ui.ts`, `src/style.css` – menus, level select, HUD, dialogs.
 - `src/game/coins.ts` – coin colors and rarity, coin spot helpers and rules, per-play spawn roll, pickup.
-- `src/game/coinView.ts` – the spinning 3D coins and the pickup pop.
+- `src/game/coinView.ts` – the spinning 3D coins.
+- `src/game/coinBurst.ts` – the coin pickup burst: sparks and a flash in one pooled particle draw.
 - `src/game/wallet.ts` – the coin wallet (saved on the device).
 - `src/game/autopilot.ts` – drives the headless level tests (and `game.autoplay` for debugging).
 - `tools/art.html` – renders the app icon and launch screen with the game's own 3D assets.

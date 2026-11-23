@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildLevel, MAX_GRADE, slopeProblems, type LevelDef } from '../src/game/level';
+import { Autopilot } from '../src/game/autopilot';
+import { buildLevel, holeDistance, MAX_GRADE, slopeProblems, type LevelDef } from '../src/game/level';
 import { right, straight } from '../src/game/path';
 import { LEVELS } from '../src/game/levels';
 import { initPhysics, PHYSICS } from '../src/game/physics';
@@ -53,6 +54,39 @@ describe.each(LEVELS)('level $id: $name', (def) => {
   it('can be completed without falling', () => {
     const r = simulate(def);
     expect(r, `reached s=${r.s.toFixed(1)} of ${r.finishS.toFixed(1)}`).toMatchObject({ outcome: 'won' });
+  });
+});
+
+describe.each(LEVELS)('smooth rolling on level $id: $name', (def) => {
+  // Driven fast, every physics step must move the ball as far as its velocity says (no
+  // stop-start stutter, which shows on screen as a shake that grows with speed) and the ball
+  // must stay on the surface (no hops off triangle seams).
+  it('moves steadily and stays on the surface at speed', () => {
+    const level = buildLevel(def);
+    const pilot = new Autopilot(level);
+    pilot.cruiseSpeed = 14;
+    let prev: { x: number; y: number; z: number; vx: number; vy: number; vz: number } | null = null;
+    const stutters: string[] = [];
+    let worstLift = 0;
+    const r = simulate(def, {
+      controller: ({ tracker, pos, vel, out }) => {
+        if (prev) {
+          const moved = Math.hypot(pos.x - prev.x, pos.y - prev.y, pos.z - prev.z);
+          const expected = (Math.hypot(vel.x + prev.vx, vel.y + prev.vy, vel.z + prev.vz) / 2) * PHYSICS.dt;
+          if (expected > 4 * PHYSICS.dt && Math.abs(moved / expected - 1) > 0.1) {
+            stutters.push(`s ${tracker.s.toFixed(1)}: moved ${moved.toFixed(3)} m, expected ${expected.toFixed(3)} m`);
+          }
+          // Skimming a hole's rim legitimately dips the ball, so only judge it on solid ground.
+          const overRim = level.holes.some((h) => holeDistance(h, tracker.s, tracker.u) < h.r + PHYSICS.ballRadius);
+          if (!overRim) worstLift = Math.max(worstLift, Math.abs(tracker.height - PHYSICS.ballRadius));
+        }
+        prev = { x: pos.x, y: pos.y, z: pos.z, vx: vel.x, vy: vel.y, vz: vel.z };
+        pilot.compute(tracker, pos, vel, out);
+      },
+    });
+    expect(r.outcome).toBe('won');
+    expect(stutters.slice(0, 5), `${stutters.length} stuttering steps`).toEqual([]);
+    expect(worstLift).toBeLessThan(0.03);
   });
 });
 

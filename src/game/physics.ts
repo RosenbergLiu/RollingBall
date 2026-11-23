@@ -3,6 +3,12 @@ import { BALL_RADIUS } from './level';
 
 export const PHYSICS = {
   dt: 1 / 60,
+  /**
+   * Engine substeps per `dt`. At one step per 1/60 s the trimesh's internal-edge fixing
+   * makes a fast ball move stop-start (it covers as little as 5 % of its velocity on some
+   * steps), which shows on screen as a shake that grows with speed. Smaller steps remove it.
+   */
+  substeps: 4,
   gravity: 16,
   ballRadius: BALL_RADIUS,
   ballFriction: 1.0,
@@ -39,7 +45,7 @@ export class PhysicsWorld {
 
   constructor() {
     this.world = new RAPIER.World({ x: 0, y: -PHYSICS.gravity, z: 0 });
-    this.world.timestep = PHYSICS.dt;
+    this.world.timestep = PHYSICS.dt / PHYSICS.substeps;
     this.ball = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setCcdEnabled(true)
@@ -94,7 +100,12 @@ export class PhysicsWorld {
     this.ball.setAngularDamping(on ? PHYSICS.brakingDamping : PHYSICS.angularDamping);
   }
 
+  /** Advances the simulation by `PHYSICS.dt`, in `PHYSICS.substeps` engine steps. */
   step(): void {
+    for (let i = 0; i < PHYSICS.substeps; i++) this.substep();
+  }
+
+  private substep(): void {
     const a = this.accel;
     if (a.x !== 0 || a.y !== 0 || a.z !== 0) {
       let { x, y, z } = a;
@@ -112,7 +123,7 @@ export class PhysicsWorld {
           z -= (v.z / speed) * remove;
         }
       }
-      const k = this.ball.mass() * PHYSICS.dt;
+      const k = this.ball.mass() * this.world.timestep;
       this.ball.applyImpulse({ x: x * k, y: y * k, z: z * k }, true);
     }
     this.world.step();

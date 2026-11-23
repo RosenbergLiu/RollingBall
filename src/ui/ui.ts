@@ -17,6 +17,7 @@ export interface UIHandlers {
   /** Open the settings (from the main menu or the pause menu). */
   settings(): void;
   setControl(mode: ControlMode): void;
+  setSound(on: boolean): void;
   closeSettings(): void;
 }
 
@@ -49,6 +50,7 @@ export function formatTime(t: number): string {
 const LOCK = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Z"/></svg>`;
 const PAUSE = `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1.2" fill="currentColor"/></svg>`;
 const GEAR = `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3.4"/><circle cx="12" cy="12" r="7"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.3 5.3l1.7 1.7M17 17l1.7 1.7M5.3 18.7 7 17M17 7l1.7-1.7"/></g></svg>`;
+const SPEAKER = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9.5h3.2L12 5.2v13.6l-4.8-4.3H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z"/><g class="sound-waves" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15.5 9.2a4 4 0 0 1 0 5.6"/><path d="M18.2 6.6a7.6 7.6 0 0 1 0 10.8"/></g><g class="sound-off" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m15.5 9.5 5 5M20.5 9.5l-5 5"/></g></svg>`;
 const CHECK = `<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
 
 /** Wording for each control mode: settings card, menu help line and in-game hint. */
@@ -178,6 +180,13 @@ const TEMPLATE = /* html */ `
           )
           .join('')}
       </div>
+      <div class="settings-label" id="sound-label">Sound</div>
+      <button class="sound-toggle" role="switch" aria-checked="true" aria-labelledby="sound-label" data-action="sound" data-bind="sound-toggle">
+        ${SPEAKER}
+        <span class="sound-name">Sound effects</span>
+        <span class="sound-state" data-bind="sound-state">On</span>
+        <span class="switch" aria-hidden="true"><span class="switch-knob"></span></span>
+      </button>
       <div class="actions">
         <button class="btn primary big" data-action="settings-done">Done</button>
       </div>
@@ -235,6 +244,8 @@ export class UI {
         return this.h.settings();
       case 'control':
         return this.h.setControl(el.dataset.mode as ControlMode);
+      case 'sound':
+        return this.h.setSound(el.getAttribute('aria-checked') !== 'true');
       case 'settings-done':
         return this.h.closeSettings();
     }
@@ -346,6 +357,12 @@ export class UI {
     this.root.querySelectorAll<HTMLElement>('.control-option').forEach((el) => {
       el.setAttribute('aria-checked', String(el.dataset.mode === mode));
     });
+  }
+
+  /** Shows whether sound effects are on in the settings. */
+  setSound(on: boolean): void {
+    this.bind('sound-toggle').setAttribute('aria-checked', String(on));
+    this.bind('sound-state').textContent = on ? 'On' : 'Off';
   }
 
   /** Where the joystick base is on screen, or null when it isn't shown. */

@@ -1,9 +1,8 @@
 import * as THREE from 'three';
+import { CoinBurst } from './coinBurst';
 import { COIN_COLORS, COIN_HEX, COIN_RADIUS, type CoinColor, type SpawnedCoin } from './coins';
 
 const THICKNESS = 0.08;
-/** Duration of the pop when a coin is collected (seconds). */
-const POP_TIME = 0.3;
 const SPIN_SPEED = 2.4;
 const BOB_HEIGHT = 0.06;
 
@@ -50,12 +49,15 @@ interface Slot {
   mesh: THREE.InstancedMesh;
   index: number;
   phase: number;
-  popStart: number | null;
 }
 
-/** All coins of one play, drawn as one instanced mesh per color. */
+/**
+ * All coins of one play, drawn as one instanced mesh per color. A collected coin vanishes
+ * in a burst of sparks (coinBurst.ts).
+ */
 export class CoinField {
   readonly group = new THREE.Group();
+  private readonly burst: CoinBurst;
   private readonly slots: Slot[] = [];
   private readonly bySpot = new Map<number, Slot>();
   private readonly meshes: THREE.InstancedMesh[] = [];
@@ -67,7 +69,8 @@ export class CoinField {
   private readonly sc = new THREE.Vector3();
   private readonly up = new THREE.Vector3(0, 1, 0);
 
-  constructor(coins: SpawnedCoin[]) {
+  /** `detail` (0..1) thins out the pickup bursts when rendering quality is lowered. */
+  constructor(coins: SpawnedCoin[], detail = 1) {
     // Disc standing upright: caps face ±Z, spun around the world's up axis.
     this.geometry = new THREE.CylinderGeometry(COIN_RADIUS, COIN_RADIUS, THICKNESS, 32);
     this.geometry.rotateX(Math.PI / 2);
@@ -80,13 +83,15 @@ export class CoinField {
       mesh.castShadow = true;
       mesh.frustumCulled = false; // coins move slightly; the set is small
       list.forEach((coin, index) => {
-        const slot: Slot = { coin, mesh, index, phase: coin.spot * 0.7, popStart: null };
+        const slot: Slot = { coin, mesh, index, phase: coin.spot * 0.7 };
         this.slots.push(slot);
         this.bySpot.set(coin.spot, slot);
       });
       this.meshes.push(mesh);
       this.group.add(mesh);
     }
+    this.burst = new CoinBurst(detail);
+    this.group.add(this.burst.points);
     this.update(0);
   }
 
@@ -111,39 +116,34 @@ export class CoinField {
     return [edge, face, face];
   }
 
-  /** Starts the pop animation for a collected coin. */
+  /** The coin bursts where it hovers right now; it is hidden from the next update on. */
   collect(coin: SpawnedCoin, time: number): void {
     const slot = this.bySpot.get(coin.spot);
-    if (slot && slot.popStart === null) slot.popStart = time;
+    if (!slot) return;
+    const p = slot.coin.pos;
+    this.burst.spawn(coin.color, p.x, p.y + this.bob(slot, time), p.z, time);
+  }
+
+  private bob(s: Slot, time: number): number {
+    return Math.sin(time * 2 + s.phase) * BOB_HEIGHT;
   }
 
   update(time: number): void {
     for (const s of this.slots) {
-      let scale = 1;
-      let rise = 0;
-      let spin = time * SPIN_SPEED + s.phase;
-      if (s.coin.collected) {
-        const t = s.popStart === null ? POP_TIME : time - s.popStart;
-        if (t >= POP_TIME) scale = 0;
-        else {
-          const f = t / POP_TIME;
-          scale = 1 + 0.7 * f;
-          rise = 0.7 * f;
-          spin += f * 12;
-        }
-      }
       this.p.copy(s.coin.pos);
-      this.p.y += Math.sin(time * 2 + s.phase) * BOB_HEIGHT + rise;
-      this.q.setFromAxisAngle(this.up, spin);
-      this.sc.setScalar(scale);
+      this.p.y += this.bob(s, time);
+      this.q.setFromAxisAngle(this.up, time * SPIN_SPEED + s.phase);
+      this.sc.setScalar(s.coin.collected ? 0 : 1);
       this.m.compose(this.p, this.q, this.sc);
       s.mesh.setMatrixAt(s.index, this.m);
     }
     for (const mesh of this.meshes) mesh.instanceMatrix.needsUpdate = true;
+    this.burst.update(time);
   }
 
   dispose(): void {
     for (const mesh of this.meshes) mesh.dispose();
     for (const d of this.disposables) d.dispose();
+    this.burst.dispose();
   }
 }

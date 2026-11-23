@@ -5,12 +5,13 @@ import { emptyCoinCounts, rollCoins, totalCoins, touchedCoins, type CoinCounts, 
 import { CoinField } from './coinView';
 import { haptics } from './haptics';
 import { Controls } from './input';
-import { buildLevel, hasFallen, hasFinished, spawnPoint, type BuiltLevel } from './level';
+import { BALL_RADIUS, buildLevel, hasFallen, hasFinished, spawnPoint, type BuiltLevel } from './level';
 import { LEVELS } from './levels';
 import { PhysicsWorld, PHYSICS, type Vec3 } from './physics';
 import { buildPlatform } from './platform';
 import { isUnlocked, nextPlayableLevel, recordCompletion, type ProgressData } from './progress';
 import type { Settings } from './settings';
+import { contactFactor, Sound } from './sound';
 import { saveProgress, saveSettings, saveWallet } from './storage';
 import { buildQualityLevels, QualityGovernor } from './quality';
 import { PathTracker } from './tracker';
@@ -53,6 +54,7 @@ export class Game {
   private readonly ball: THREE.Mesh;
   private readonly ui: UI;
   private readonly controls: Controls;
+  private readonly sound: Sound;
   /** Where the settings were opened from, so Done goes back there. */
   private settingsFrom: 'menu' | 'pause' | null = null;
   private readonly quality = new QualityGovernor(buildQualityLevels(window.devicePixelRatio), loadQualityLevel());
@@ -154,9 +156,19 @@ export class Game {
         this.controls.setMode(mode);
         this.ui.setControls(mode);
       },
+      setSound: (on) => {
+        this.settings.sound = on;
+        void saveSettings(this.settings);
+        this.sound.setEnabled(on);
+        this.ui.setSound(on);
+      },
       closeSettings: () => this.closeSettings(),
     };
     this.ui = new UI(root, LEVELS, handlers);
+    this.sound = new Sound(settings.sound);
+    // Audio may only start inside a tap on iOS: any tap (Play, a level card…) starts it.
+    this.sound.listen(root);
+    this.ui.setSound(settings.sound);
     this.controls = new Controls(canvas, () => this.ui.joystickGeometry(), settings.control);
     this.controls.onPushVisual = (v) => this.ui.setTouch(v);
     this.controls.onJoystickVisual = (v) => this.ui.setJoystick(v);
@@ -235,7 +247,8 @@ export class Game {
     this.clearCoins();
     if (!this.level) return;
     this.coins = rollCoins(this.level);
-    this.coinField = new CoinField(this.coins);
+    // Lighter pickup bursts once rendering quality has stepped down (older iPads).
+    this.coinField = new CoinField(this.coins, this.quality.level > 0 ? 0.6 : 1);
     this.scene.add(this.coinField.group);
     this.runCoins = emptyCoinCounts();
     this.ui.setRunCoins(0);
@@ -258,6 +271,7 @@ export class Game {
       this.runCoins[coin.color]++;
       this.wallet = addCoin(this.wallet, coin.color);
       this.ui.setRunCoins(totalCoins(this.runCoins), coin.color);
+      this.sound.coin(coin.color);
       haptics.tap();
     }
     void saveWallet(this.wallet);
@@ -458,7 +472,10 @@ export class Game {
     this.lastTime = now;
     // Nothing moves on the menus or while paused: skip the work (and save battery).
     document.documentElement.classList.toggle('in-menu', this.covered || !this.level);
-    if (!this.level || this.covered || (this.paused && !this.renderOnce)) return;
+    if (!this.level || this.covered || (this.paused && !this.renderOnce)) {
+      this.sound.roll(0, 0, dt);
+      return;
+    }
     this.renderOnce = false;
     this.elapsed += dt;
     if (this.quality.sample(rawDt)) this.applyQuality();
@@ -476,6 +493,7 @@ export class Game {
       this.updatePhase(dt);
     }
     const physicsMs = performance.now() - workStart;
+    this.updateRollingSound(dt);
 
     const alpha = this.paused ? 1 : Math.min(this.accumulator / PHYSICS.dt, 1);
     this.renderPos.lerpVectors(this.prevPos, this.currPos, alpha);
@@ -491,6 +509,20 @@ export class Game {
     this.renderer.render(this.scene, this.camera);
     this.reportFrameRate(rawDt, performance.now() - workStart, physicsMs);
   };
+
+  /**
+   * The rolling sound follows the ball's speed while it rolls on the track. It is silent in
+   * the air, when falling (Game Over), paused and on the win screen; menus are handled in frame().
+   */
+  private updateRollingSound(dt: number): void {
+    if (this.phase !== 'rolling' || this.paused || !this.tracker) {
+      this.sound.roll(0, 0, dt);
+      return;
+    }
+    // Speed over the last physics step (no allocation, unlike reading the body's velocity).
+    const speed = this.currPos.distanceTo(this.prevPos) / PHYSICS.dt;
+    this.sound.roll(speed, contactFactor(this.tracker.height, BALL_RADIUS), dt);
+  }
 
   /** Chase camera behind the ball along the path; always looks straight at the ball. */
   private updateCamera(dt: number, snap = false): void {

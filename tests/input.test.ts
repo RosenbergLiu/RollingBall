@@ -20,16 +20,23 @@ describe('push strength (touch and joystick)', () => {
 });
 
 describe('settings', () => {
-  it('default to touch control', () => {
-    expect(defaultSettings()).toEqual({ control: 'touch' });
+  it('default to touch control with sound on', () => {
+    expect(defaultSettings()).toEqual({ control: 'touch', sound: true });
   });
 
   it('keep known control modes and drop broken or retired ones', () => {
-    expect(sanitizeSettings({ control: 'joystick' })).toEqual({ control: 'joystick' });
-    expect(sanitizeSettings({ control: 'touch', extra: 1 })).toEqual({ control: 'touch' });
+    expect(sanitizeSettings({ control: 'joystick' })).toEqual({ control: 'joystick', sound: true });
+    expect(sanitizeSettings({ control: 'touch', extra: 1 })).toEqual({ control: 'touch', sound: true });
     // Tilt was a control mode briefly; a device that saved it goes back to touch.
-    expect(sanitizeSettings({ control: 'tilt' })).toEqual({ control: 'touch' });
-    expect(sanitizeSettings(null)).toEqual({ control: 'touch' });
-    expect(sanitizeSettings('joystick')).toEqual({ control: 'touch' });
+    expect(sanitizeSettings({ control: 'tilt' })).toEqual({ control: 'touch', sound: true });
+    expect(sanitizeSettings(null)).toEqual({ control: 'touch', sound: true });
+    expect(sanitizeSettings('joystick')).toEqual({ control: 'touch', sound: true });
+  });
+
+  it('keep the sound switch, and default it to on when missing or broken', () => {
+    expect(sanitizeSettings({ control: 'joystick', sound: false })).toEqual({ control: 'joystick', sound: false });
+    // Settings saved before the sound switch existed.
+    expect(sanitizeSettings({ control: 'touch' }).sound).toBe(true);
+    expect(sanitizeSettings({ sound: 'no' }).sound).toBe(true);
   });
 });
