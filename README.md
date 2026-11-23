@@ -1,0 +1,114 @@
+# Rolling Ball
+
+An iPad game: steer a steel ball down floating, fence-less slopes. Built with
+[Three.js](https://threejs.org) (rendering), [Rapier](https://rapier.rs) (physics) and
+[Capacitor](https://capacitorjs.com) (native iOS wrapper).
+
+## How to play
+
+- The ball always sits in the middle of the screen.
+- Touch and drag anywhere: while your finger is down the ball is pushed toward your finger.
+  The farther your finger is from the ball, the stronger the push. Lift your finger to stop pushing.
+- Falling off an edge or into a hole is **Game Over**; the ball respawns at the entrance.
+- Cross the checkered finish line to win, then go to the next level or back to the menu.
+- Levels unlock in order. Locked levels can't be selected from the level menu.
+  Progress and best times are saved on the device.
+
+## Levels
+
+| # | Name | What's new |
+|---|------|------------|
+| 1 | First Roll | Wide straight slope |
+| 2 | Narrowing | Width pinches down to 3.6 m |
+| 3 | The Bend | Left and right curves |
+| 4 | Swiss Cheese | Wide slope full of holes |
+| 5 | Serpentine | S-curves |
+| 6 | Spiral Descent | 450° spiral |
+| 7 | Hole Alley | Curves with holes |
+| 8 | Tightrope | Narrow zig-zag with edge notches |
+
+Levels live in [src/game/levels.ts](src/game/levels.ts). Each is a list of straight/arc segments
+with a grade (drop per meter), width keyframes and holes, so adding one is a few lines.
+
+## Development
+
+```bash
+npm install
+npm run dev        # play in a browser at http://localhost:5173 (mouse works like a finger)
+npm test           # unit tests + a headless autopilot that must finish every level
+```
+
+## iPad app
+
+Requires Xcode. The iOS project is in `ios/` (Swift Package Manager, no CocoaPods).
+
+```bash
+npm run ios        # type-check, build the web bundle and copy it into the iOS project
+npm run ios:open   # open in Xcode, then pick an iPad (or simulator) and press Run
+```
+
+The app is iPad-only, full screen, works in every orientation and hides the status bar.
+To run on a real iPad, set your signing team in Xcode (App target → Signing & Capabilities).
+
+### Supported iPads
+
+- **Minimum: iPadOS 15.0.** That covers the iPad Pro (2nd generation, 2017: 12.9-inch and
+  10.5-inch, A10X), which runs iPadOS 15, 16 and 17, and every newer iPad.
+- iPadOS 15 is also the floor for the tech: Xcode 27 and Capacitor 8 can't target anything
+  older, and three.js needs WebGL 2, which iPad Safari/WebKit first enabled in iPadOS 15.
+- The web bundle is compiled for Safari 15 (`vite.config.ts`). three.js ships syntax that
+  needs Safari 16.4, and that syntax would otherwise stop the game from starting on
+  iPadOS 15.0–16.3. Rapier's physics WASM only uses WebAssembly features Safari 15 has
+  (checked: no SIMD, tail calls or exceptions).
+- **Older, slower GPUs:** the game measures its frame rate and, below ~48 fps, steps
+  down the render resolution and shadow detail (`src/game/quality.ts`). The chosen level
+  is remembered on the device.
+
+## Game category, parental controls and Screen Time
+
+Screen Time and parental controls are system features. They apply to every App Store app
+without any code, so the job is to make sure the app is categorized and rated correctly
+and behaves well when iOS limits it:
+
+- **Category:** `Info.plist` declares `LSApplicationCategoryType = public.app-category.games`
+  and `GCSupportsGameMode = true` (Game Mode on iPadOS 18+).
+- **Screen Time** reports usage per app and per category, so the game shows up under
+  **Games**. A parent can set an **App Limit** for Games (or just this app), add it to
+  **Downtime**, or block it entirely.
+- **Interruptions:** when a time limit, Downtime or the home gesture takes the app
+  off-screen, the current run pauses (checked on the simulator). The physics and the
+  timer stop, and the Pause menu is waiting on return. Unlocked levels and best times are
+  saved the moment a level is completed.
+- **Privacy:** the game is fully offline. It has no accounts, ads, analytics, in-app
+  purchases, external links or web content. `ios/App/App/PrivacyInfo.xcprivacy` declares
+  no tracking and no collected data. It also declares the on-device `UserDefaults`
+  storage used for progress (reason `CA92.1`), which App Store uploads require.
+
+### App Store Connect checklist (done by you, not by code)
+
+The App Store category and age rating are what Screen Time and Content & Privacy
+Restrictions actually use. Set them when you create the app record:
+
+1. **Primary category: Games.** Pick a game subcategory, e.g. *Casual* or *Arcade*.
+   This is the category Screen Time uses for App Store installs.
+2. **Age rating:** answer "None" to every content question → **4+**. Parents who
+   restrict apps by age can still allow it, and it is allowed at every restriction level.
+3. **App Privacy:** "Data Not Collected".
+4. **Kids Category (optional):** the app meets Apple's rules (no ads, tracking, purchases or
+   external links). Choose it only if you're targeting children under 11. It can't be
+   removed later without Apple's help.
+
+Builds you install yourself from Xcode aren't App Store installs, so Screen Time may
+list them under "Other" until the app comes from the App Store or TestFlight.
+
+## Code map
+
+- `src/game/path.ts` – turns segments into a smooth sampled centerline.
+- `src/game/level.ts` – level types, widths, holes, spawn/fall/finish rules.
+- `src/game/platform.ts` – builds the platform mesh (top, walls, rim, round holes) and colliders.
+- `src/game/physics.ts` – Rapier world, ball body, touch acceleration and speed cap.
+- `src/game/tracker.ts` – follows the ball along the path (progress, lateral offset, height).
+- `src/game/game.ts` – game loop, states, camera, input mapping.
+- `src/game/view.ts` – Three.js materials, sky, lights, finish gate.
+- `src/ui/ui.ts`, `src/style.css` – menus, level select, HUD, dialogs.
+- `src/game/autopilot.ts` – drives the menu's demo and the level tests.
