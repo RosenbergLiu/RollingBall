@@ -1,6 +1,6 @@
 import { Vector3 } from 'three';
 import type { CoinSpot } from './coins';
-import { buildPath, pathAt, straight, type PathData, type Segment } from './path';
+import { buildPath, pathAt, segmentLength, straight, type PathData, type Segment } from './path';
 
 export interface Hole {
   /** Distance along the path in meters (from the start of the authored segments). */
@@ -24,7 +24,7 @@ export interface LevelDef {
   id: number;
   name: string;
   tagline: string;
-  /** Default drop per horizontal meter. */
+  /** Default slope: drop per horizontal meter (0 = flat, negative = uphill). */
   grade: number;
   segments: Segment[];
   /** [s, width] keyframes, s measured from the start of the authored segments. */
@@ -44,6 +44,38 @@ export const ENTRANCE_LENGTH = 7;
 export const RUNOUT_LENGTH = 12;
 export const SPAWN_S = 3;
 export const BALL_RADIUS = 0.5;
+/** Steepest allowed slope, up or down (drop or rise per horizontal meter). */
+export const MAX_GRADE = 0.2;
+/** Largest slope change between neighbouring segments; keeps crests and dips smooth. */
+export const MAX_GRADE_CHANGE = 0.2;
+/**
+ * The route may not climb in its first meters: a ball that fails to make it up would roll
+ * back across the start pad and off its open back edge.
+ */
+export const NO_CLIMB_START = 12;
+
+/**
+ * Every slope rule a level breaks (empty when valid). Routes may go down, run flat or
+ * climb, as long as no slope is too steep and slope changes are smooth.
+ */
+export function slopeProblems(def: LevelDef): string[] {
+  const problems: string[] = [];
+  const near = (a: number, b: number) => a <= b + 1e-9;
+  let s = 0;
+  let prev = 0; // the entrance pad is flat
+  def.segments.forEach((seg, i) => {
+    const g = seg.grade ?? def.grade;
+    const where = `segment ${i} (s ${s.toFixed(1)}, grade ${g})`;
+    if (!near(Math.abs(g), MAX_GRADE)) problems.push(`${where} is steeper than ${MAX_GRADE}`);
+    if (!near(Math.abs(g - prev), MAX_GRADE_CHANGE)) problems.push(`${where} changes slope too sharply from ${prev}`);
+    if (g < 0 && s < NO_CLIMB_START) problems.push(`${where} climbs within the first ${NO_CLIMB_START} m`);
+    prev = g;
+    s += segmentLength(seg);
+  });
+  if (!near(Math.abs(prev), MAX_GRADE_CHANGE)) problems.push(`the last segment changes slope too sharply into the flat run-out`);
+  return problems;
+}
+
 /** How far below the surface the ball must drop before it counts as fallen. */
 export const FALL_DEPTH = 2.2;
 

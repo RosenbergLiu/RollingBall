@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { buildLevel } from '../src/game/level';
+import { buildLevel, MAX_GRADE, slopeProblems, type LevelDef } from '../src/game/level';
+import { right, straight } from '../src/game/path';
 import { LEVELS } from '../src/game/levels';
-import { initPhysics } from '../src/game/physics';
+import { initPhysics, PHYSICS } from '../src/game/physics';
 import { simulate } from './simulate';
 
 beforeAll(async () => {
@@ -82,5 +83,79 @@ describe('physics rules', () => {
     });
     expect(r.outcome).toBe('won');
     expect(r.maxSpeed).toBeLessThan(19);
+  });
+});
+
+describe('slopes: routes may go down, run flat or climb', () => {
+  const base = { id: 99, name: 'slopes', tagline: '', grade: 0, width: [[0, 8]] as [number, number][], theme: LEVELS[0].theme };
+
+  it('every catalog level stays within the slope limits', () => {
+    for (const def of LEVELS) expect(slopeProblems(def), def.name).toEqual([]);
+  });
+
+  it('flags slopes that are too steep, change too sharply, or climb right after the start', () => {
+    const problems = slopeProblems({
+      ...base,
+      segments: [straight(5, -0.05), straight(10, 0.15), straight(10, -0.12), straight(10, 0.25), straight(10, 0.25)],
+    }).join('\n');
+    expect(problems).toMatch(/segment 0 .* climbs within the first/);
+    expect(problems).toMatch(/segment 2 .* changes slope too sharply/); // 0.15 -> -0.12
+    expect(problems).toMatch(/segment 3 .* steeper than/);
+    expect(problems).toMatch(/last segment .* run-out/);
+  });
+
+  it('a ball let go on a climb rolls back down', () => {
+    const def: LevelDef = { ...base, segments: [straight(14, 0), straight(30, -0.15), straight(10, 0)] };
+    expect(slopeProblems(def)).toEqual([]);
+    let peak = 0;
+    let last = 0;
+    const r = simulate(def, {
+      maxTime: 15,
+      controller: ({ t, tracker, vel, out }) => {
+        const pushing = t < 1.4;
+        out.x = -vel.x * 2 - tracker.u * 4;
+        out.y = 0;
+        out.z = pushing ? -12 : 0;
+        if (!pushing) peak = Math.max(peak, tracker.s);
+        last = tracker.s;
+      },
+    });
+    expect(peak).toBeGreaterThan(7 + 14 + 2); // it made it onto the climb…
+    expect(last).toBeLessThan(peak - 3); // …rolled back once released…
+    expect(r.outcome).not.toBe('fell'); // …and the flat start kept it from rolling off the back
+  });
+
+  it('a modest push gets the ball up the steepest allowed climb', () => {
+    const def: LevelDef = {
+      ...base,
+      segments: [straight(14, 0), straight(25, -MAX_GRADE), straight(8, 0)],
+    };
+    expect(slopeProblems(def)).toEqual([]);
+    const r = simulate(def, {
+      maxTime: 40,
+      controller: ({ tracker, vel, out }) => {
+        out.x = -vel.x * 2 - tracker.u * 4;
+        out.y = 0;
+        out.z = -0.4 * PHYSICS.maxAccel; // 40 % of a full push
+      },
+    });
+    expect(r.outcome).toBe('won');
+  });
+
+  it('the autopilot finishes a level that mixes downhill, flat and uphill sections', () => {
+    const def: LevelDef = {
+      ...base,
+      segments: [
+        straight(12, 0.1),
+        straight(10, 0),
+        straight(15, -0.1),
+        straight(8, 0),
+        right(70, 16, 0.08),
+        straight(14, -0.06),
+        straight(10, 0.05),
+      ],
+    };
+    expect(slopeProblems(def)).toEqual([]);
+    expect(simulate(def)).toMatchObject({ outcome: 'won' });
   });
 });

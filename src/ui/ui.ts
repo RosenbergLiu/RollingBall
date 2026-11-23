@@ -62,7 +62,7 @@ const TEMPLATE = /* html */ `
         <span class="logo-ball"></span>
         <h1>Rolling<br/>Ball</h1>
       </div>
-      <p class="tagline">Steer a steel ball down floating slopes. No fences. Don't fall.</p>
+      <p class="tagline">Steer a steel ball along floating tracks. No fences. Don't fall.</p>
       <div class="wallet" data-bind="wallet" aria-label="Your coins"></div>
       <button class="btn primary big" data-action="play">Play <span data-bind="play-level"></span></button>
       <button class="btn big" data-action="levels">Select Level</button>

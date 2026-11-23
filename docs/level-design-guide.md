@@ -13,7 +13,8 @@ today to ones that need new engine features.
 
 ## 1. The game in one paragraph
 
-A steel ball rolls down a floating, fence-less platform. The camera follows behind it and
+A steel ball rolls along a floating, fence-less platform. The route can go downhill, run
+flat or climb gently, in any mix. The camera follows behind it and
 the ball stays in the center of the screen. While a finger is on the screen, the ball is
 pushed toward the finger, harder the farther the finger is from the center. Falling off an
 edge or into a hole is **Game Over**, and the ball respawns at the entrance of the level, or
@@ -43,8 +44,9 @@ Rotate through these feelings across the catalog. Two levels in a row should not
 same main feeling.
 
 - **Rush**: long downhill straights and big sweeping curves. Speed is the fun.
-- **Flow**: rhythmic S-curves; the player finds a swing.
-- **Calm**: wide, gentle and scenic. A breather after something busy.
+- **Flow**: rhythmic S-curves or rolling hills (down, up, down); the player finds a swing.
+- **Calm**: wide, flat or gently sloped, and scenic. A breather after something busy.
+- **Effort and reward**: a gentle climb to a flat lookout, then a swoop down.
 - **Choice**: forks, lanes around an island, picking a line through holes.
 - **Surprise**: a drop to a new platform, a reveal around a corner, a big landmark.
 - **Precision (light)**: a short narrow bridge *with rest areas on both sides*. Never long.
@@ -76,7 +78,8 @@ A fall sends the ball back to the entrance, or to the last checkpoint once check
 So a long stretch without a checkpoint makes a fall expensive.
 
 - **Standard levels:** **25–45 seconds** of play for a typical child (about 50–110 m of
-  authored path at the current speeds). No checkpoint needed.
+  authored path at the current speeds). Flat and climbing sections are slower than downhill,
+  so shorten the route when a level has a lot of them. No checkpoint needed.
 - **Adventure levels:** up to about **90 seconds**, with a checkpoint every **20–30 seconds**
   of play (§7.10). Use them for "tour" levels that chain several ideas together. Keep them
   rare (about one per world) so most levels stay short and snappy.
@@ -92,11 +95,13 @@ Levels live in `src/game/levels.ts` as `LevelDef` objects (`src/game/level.ts`).
   id: 9,                          // sequential; see §6.4 (never renumber existing levels)
   name: 'Lazy River',
   tagline: 'Just enjoy the ride.', // one short line on the level card
-  grade: 0.09,                    // default drop per horizontal meter (downhill)
+  grade: 0.09,                    // default slope, drop per horizontal meter: + down, 0 flat, − up
   segments: [                     // the centerline, built like a turtle
     straight(12),                 // length in m, optional own grade: straight(10, 0.15)
     left(60, 16),                 // angle in degrees, radius in m, optional grade
     right(120, 14),
+    straight(15, -0.06),          // a gentle climb (negative grade = uphill)
+    straight(10, 0),              // flat
     straight(20, 0.04),
   ],
   width: [[0, 8], [30, 6], [60, 9]],   // [s, width] keyframes, smoothstep between them
@@ -117,8 +122,10 @@ Facts about the format:
   run-out after them. The finish line sits 1.5 m into the run-out.
 - The ball spawns 3 m into the entrance pad. Heading 0 is −Z. `left()` turns
   counter-clockwise seen from above.
-- Grade changes are smoothed over 5 m, so slopes blend gently. A **negative grade means
-  uphill**: the ball slows and the player must push. Use it short and gently.
+- **The route does not have to go down.** Each segment's grade sets its slope: positive
+  goes downhill, 0 is flat, negative climbs. Mix them freely within the limits in §4. A
+  level may even end higher than it starts.
+- Slope changes are smoothed over 5 m, so crests and dips blend gently.
 - Width changes are smooth too, so a keyframe pair is a gentle funnel, not a step.
 - Holes are circles. They can cut into an edge (a notch) or overlap each other. A chain of
   overlapping holes makes a slot with scalloped edges.
@@ -140,8 +147,11 @@ by the engine or tests, or is the point where the game breaks.
 | Knob | Comfortable (most of a level) | Spicy (one short moment) | Hard limit |
 |---|---|---|---|
 | Width | 5–10 m | 3.5–4.5 m for ≤ 15 m | ≥ 3.0 m; max width ≤ 14 m (mesh size) |
-| Grade (downhill) | 0.06–0.12 | 0.13–0.18 for ≤ 20 m | ≤ 0.2 |
-| Uphill | −0.03 to −0.06 for ≤ 10 m | −0.08 for ≤ 6 m | the ball must still make it over at a gentle push |
+| Slope, downhill (grade > 0) | 0–0.12 | 0.13–0.18 for ≤ 20 m | ≤ 0.2 (test) |
+| Slope, flat (grade 0) | any length | n/a | none; the ball only moves when pushed, which is fine |
+| Slope, uphill (grade < 0) | 0 to −0.10, each climb ≤ 20 m | −0.11 to −0.16 for ≤ 12 m | ≥ −0.2 (test) |
+| Slope change between neighbouring segments | ≤ 0.12 | ≤ 0.2 | ≤ 0.2, including into the flat entrance and run-out (test) |
+| Climbing near the start | none in the first 15 m | n/a | none in the first 12 m (test) |
 | Curve radius | ≥ 14 m | 9–13 m | ≥ 8 m, **and** radius > width/2 + 3 m |
 | Hole radius | 0.8–1.4 m | 1.5–2.5 m (islands, §5.2) | 0.7–3.5 m |
 | Free lane past a hole | ≥ 2.5 m | 2.0 m | ≥ 2.0 m (twice the ball) |
@@ -155,6 +165,43 @@ by the engine or tests, or is the point where the game breaks.
 
 Performance: these limits keep a level at 55–60 fps on the oldest supported iPad (iPad Pro
 12.9-inch, 2nd generation, A10X). Wider and longer platforms mean more triangles to draw.
+
+### 4.1 Up, down and flat
+The slope is a design tool, not a direction the level has to follow. Each kind of slope
+plays differently:
+
+| Slope | How it plays | Use it for |
+|---|---|---|
+| **Downhill** | The ball speeds up by itself (about 1.1 m/s² at grade 0.1). | Rush, swoops, the celebration run to the finish. |
+| **Flat** | The ball coasts and slowly stops; it moves only when pushed. The player is fully in control. | Calm plazas, rest areas, tricky bits that need care (narrow bridges, hole fields). |
+| **Uphill** | The ball slows down, and rolls back if the player stops pushing. A modest push (about 40 % of full) climbs even the steepest allowed slope. | Natural brakes before a turn or a narrow part, "effort and reward" moments, lookouts. |
+
+**Rules for climbs** (the hard limits in §4 are checked by `slopeProblems()` in the tests):
+
+- **Safe to roll back into.** A ball that doesn't make it up rolls back down, so the bottom
+  of every climb (the climb itself and the 10 m before it) must be wide (≥ 5 m) with no
+  holes and no narrowing.
+- **No climbing right after the start.** Otherwise a rolled-back ball could cross the start
+  pad and leave through its open back edge. The tests forbid climbing in the first 12 m;
+  aim for 15 m.
+- **Plain ground over a crest.** Leave at least 8 m of easy platform after the top of a
+  climb (§2.4); the player can't see over it.
+- **Smooth changes.** Neighbouring segments differ in slope by at most 0.2 (0.12
+  comfortable). Sharper crests can toss the ball into the air at speed.
+- **Don't make it a grind.** Keep each climb under 20 m and total climbing under about a
+  third of the route. Follow a climb with flat or downhill track.
+
+**Height patterns that feel fresh**
+
+- **Rolling hills:** down, up, down on a wide straight; the ball surges and floats (§5.4).
+- **Valley:** down into a dip and up the other side. It's a natural brake and rest spot,
+  with no braking needed from the player.
+- **Lookout:** a gentle climb to a wide, flat plateau with something to see, then a swoop
+  down.
+- **Flatland:** a whole level at grade 0, winding and calm. Every bit of motion comes from
+  the player.
+- **Step-ups:** short climbs separated by flat terraces. It feels like climbing stairs,
+  and each terrace is a rest area.
 
 ---
 
@@ -187,8 +234,8 @@ Wide plaza → gentle funnel → short chute → plaza again. It feels like a ri
 through a gorge. Keep the chute ≥ 4.5 m wide and straight, with the plazas flat (grade ≤ 0.04).
 
 ### 5.4 Roller coaster
-Alternate steep drops (0.15, 10 m) with short uphills (−0.05, 6 m). The ball surges and
-floats. Keep it straight and wide (≥ 6 m) so the only sensation is the ride.
+Alternate drops (0.12, 10 m) with short climbs (−0.06, 8 m). That's a slope change of
+0.18, inside the 0.2 limit. The ball surges and floats. Keep it straight and wide (≥ 6 m) so the only sensation is the ride.
 
 ### 5.5 Slalom flags
 Notches alternating left and right (holes cutting into the edges, r 0.9–1.1) on a 7 m
@@ -281,6 +328,7 @@ Hook (one new idea):
 Main feeling (§2.2), and how it differs from the previous level:
 Silhouette from above (one word or sketch):
 Beat plan: Meet (m 0–?) · Play (?–?) · Twist (?–?) · Celebrate (?–end)
+Height profile (where the route goes down, runs flat, climbs; §4.1):
 Rest areas at:
 Checkpoints at (only for levels over ~45 s, §7.10):
 Coin spots (§5.8): how many, and the patterns (trail along the good line, arcs, rings…):
@@ -298,6 +346,7 @@ unless the §7 feature you need already exists in the engine.
    - a headless autopilot finishes the level without falling
    - holes stay inside the authored path
    - coin spots follow §5.8: 15–40 of them, clear of edges and holes, not overlapping
+   - slopes follow §4: at most 0.2 either way, smooth changes, no climbing in the first 12 m
    - the shape differs from all other levels
    - ids are sequential
 2. `npm run dev`, then in the browser console run `game.startLevel(<id>)` and
@@ -538,6 +587,9 @@ they need. The existing levels are listed at the end so you don't repeat them.
 | R | Paint Party | Tiles change color where you roll | Play | §7.3 |
 | S | Grand Tour | An ~80 s adventure chaining a roundabout, a roller coaster and a gorge, with 2 checkpoints | Wonder | §7.10 (+ today's patterns) |
 | T | Treasure Trails | Three wide plazas, each with a roundabout island ringed by coin spots | Play | today (§5.2 + §5.8) |
+| U | Lookout | Climb gently to a wide flat plateau with a view, then swoop down to the finish | Effort and reward | today (§4.1) |
+| V | Flatland | A completely flat, winding route; the ball only moves when pushed | Calm | today (§4.1) |
+| W | Valley Run | Three dips, each a natural brake before a gentle bend | Flow | today (§4.1) |
 
 A possible **world structure**: group 4–6 levels into a themed world. Each world introduces
 one new mechanic and ends with a showcase level that combines it with earlier ones (still
@@ -549,7 +601,8 @@ gently). The showcase is a good place for the world's one checkpointed adventure
 4. World 4, Surfaces: ice, boost, music.
 5. World 5, Adventures: ferries, props, longer checkpointed tours.
 
-**Existing levels (don't duplicate the hook):**
+**Existing levels (don't duplicate the hook).** All eight only go downhill, so new levels
+should bring in flat and climbing sections for variety.
 
 | # | Name | Hook |
 |---|---|---|
@@ -573,6 +626,9 @@ gently). The showcase is a good place for the world's one checkpointed adventure
 - ❌ Narrow sections longer than 15 m, or narrower than 3.5 m.
 - ❌ Forks where one branch is a trap; dead ends.
 - ❌ Drops without an overlapping, wide landing zone.
+- ❌ Slopes steeper than 0.2 either way, sudden slope changes, or a climb in the first 12 m.
+- ❌ A climb whose bottom is dangerous to roll back into (holes, narrowing, an edge).
+- ❌ Long uphill grinds; follow every climb with flat or downhill track.
 - ❌ Levels longer than about 45 s without checkpoints, or over ~90 s even with them.
 - ❌ Checkpoints facing a hazard, on a fork branch, or within 20 m of the finish.
 - ❌ Renumbering or reordering existing level ids.

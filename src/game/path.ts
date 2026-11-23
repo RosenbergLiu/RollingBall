@@ -2,7 +2,8 @@ import { Vector3 } from 'three';
 
 /**
  * A level's centerline is authored as a list of "turtle" segments: straights and arcs,
- * each descending with a grade (drop per horizontal meter).
+ * each with a grade: the drop per horizontal meter. Positive goes downhill, 0 is flat and
+ * negative climbs. A route may mix all three (see MAX_GRADE in level.ts for the limits).
  */
 export type Segment =
   | { kind: 'straight'; length: number; grade?: number }
@@ -30,7 +31,7 @@ export function segmentLength(seg: Segment): number {
 
 export interface PathSample {
   pos: Vector3;
-  /** Unit tangent, pointing forward (downhill). */
+  /** Unit tangent, pointing forward along the route (down, level or up the slope). */
   tan: Vector3;
   /** Horizontal unit vector pointing to the right of the direction of travel. */
   right: Vector3;

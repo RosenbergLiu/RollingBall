@@ -1,6 +1,7 @@
 # Rolling Ball
 
-An iPad game: steer a steel ball down floating, fence-less slopes. Built with
+An iPad game: steer a steel ball along floating, fence-less tracks that run downhill, flat
+or gently uphill. Built with
 [Three.js](https://threejs.org) (rendering), [Rapier](https://rapier.rs) (physics) and
 [Capacitor](https://capacitorjs.com) (native iOS wrapper).
 
@@ -32,7 +33,8 @@ An iPad game: steer a steel ball down floating, fence-less slopes. Built with
 | 8 | Tightrope | Narrow zig-zag with edge notches |
 
 Levels live in [src/game/levels.ts](src/game/levels.ts). Each is a list of straight/arc segments
-with a grade (drop per meter), width keyframes and holes, so adding one is a few lines.
+with a grade (drop per meter: positive is downhill, 0 is flat, negative climbs), width
+keyframes, holes and coin spots, so adding one is a few lines.
 
 **Designing new levels** (by hand or with an AI): follow
 [docs/level-design-guide.md](docs/level-design-guide.md). It covers the design philosophy
