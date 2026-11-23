@@ -10,6 +10,10 @@ An iPad game: steer a steel ball down floating, fence-less slopes. Built with
 - Touch and drag anywhere: while your finger is down the ball is pushed toward your finger.
   The farther your finger is from the ball, the stronger the push. Lift your finger to stop pushing.
 - Falling off an edge or into a hole is **Game Over**; the ball respawns at the entrance.
+- Collect **coins** by rolling through them: yellow, blue, purple and orange, from most
+  common to most rare. Coins only appear on spots designed into each level, and every
+  play rolls a different set. They go straight into your wallet (shown on the main menu)
+  and are kept even if you fall. Coins have no use yet.
 - Cross the checkered finish line to win, then go to the next level or back to the menu.
 - Levels unlock in order. Locked levels can't be selected from the level menu.
   Progress and best times are saved on the device.
@@ -29,6 +33,11 @@ An iPad game: steer a steel ball down floating, fence-less slopes. Built with
 
 Levels live in [src/game/levels.ts](src/game/levels.ts). Each is a list of straight/arc segments
 with a grade (drop per meter), width keyframes and holes, so adding one is a few lines.
+
+**Designing new levels** (by hand or with an AI): follow
+[docs/level-design-guide.md](docs/level-design-guide.md). It covers the design philosophy
+(freshness over difficulty), the engine's limits, patterns that work today, proposed new
+mechanics, a bank of level ideas, and the checks every level must pass.
 
 ## Development
 
@@ -86,7 +95,16 @@ TEAM_ID=<your team ID> npm run ios:device
 ```
 
 The team ID is shown in Xcode → Settings → Accounts (select the team). With a free account,
-the app has to be reinstalled every 7 days.
+the app has to be reinstalled every 7 days. The script signs the app as
+`com.rollingball.game.t<team id>`, because `com.rollingball.game` is already taken at Apple.
+Choose your permanent app ID before publishing to the App Store.
+
+Tested on the target iPad (iPad Pro 12.9-inch 2nd gen, iPadOS 17.7.11): levels 1–5 play
+correctly. With Low Power Mode on, iPadOS caps the game at 30 fps and it keeps full
+quality. With it off, the game settles at quality level 2–3 (1.25×–1× resolution, solid
+panels instead of blur) at 55–60 fps. The quality step-down judges each 1.5-second window
+by its typical (median) frame and only lowers quality after two slow windows in a row, so
+one-off moments (a fall, the Game Over banner) don't change it.
 
 ## Game category, parental controls and Screen Time
 
@@ -135,4 +153,18 @@ list them under "Other" until the app comes from the App Store or TestFlight.
 - `src/game/game.ts` – game loop, states, camera, input mapping.
 - `src/game/view.ts` – Three.js materials, sky, lights, finish gate.
 - `src/ui/ui.ts`, `src/style.css` – menus, level select, HUD, dialogs.
-- `src/game/autopilot.ts` – drives the menu's demo and the level tests.
+- `src/game/coins.ts` – coin colors and rarity, coin spot helpers and rules, per-play spawn roll, pickup.
+- `src/game/coinView.ts` – the spinning 3D coins and the pickup pop.
+- `src/game/wallet.ts` – the coin wallet (saved on the device).
+- `src/game/autopilot.ts` – drives the headless level tests (and `game.autoplay` for debugging).
+- `tools/art.html` – renders the app icon and launch screen with the game's own 3D assets.
+
+## Artwork
+
+The app icon (a steel ball on a curving checkered slope) and the launch screen (the ball on
+the game's dark background) are rendered from the game's own 3D assets:
+
+1. `npm run dev`, then open http://localhost:5173/tools/art.html. It saves
+   `resources/icon-1024.png` and `resources/splash-2732.png`.
+2. `npm run art:install` copies them, without transparency as Apple requires, into the
+   iOS asset catalog. It also writes the web favicon and home-screen icon into `public/`.

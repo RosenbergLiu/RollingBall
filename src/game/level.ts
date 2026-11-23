@@ -1,4 +1,5 @@
 import { Vector3 } from 'three';
+import type { CoinSpot } from './coins';
 import { buildPath, pathAt, straight, type PathData, type Segment } from './path';
 
 export interface Hole {
@@ -29,6 +30,11 @@ export interface LevelDef {
   /** [s, width] keyframes, s measured from the start of the authored segments. */
   width: [number, number][];
   holes?: Hole[];
+  /**
+   * Designated coin spots (s from the start of the authored segments). Coins only ever
+   * appear on these; each play rolls which spots get a coin and in which color.
+   */
+  coins?: CoinSpot[];
   theme: Theme;
 }
 
@@ -51,6 +57,8 @@ export interface BuiltLevel {
   path: PathData;
   /** Holes with absolute s. */
   holes: BuiltHole[];
+  /** Coin spots with absolute s. */
+  coinSpots: CoinSpot[];
   spawnS: number;
   finishS: number;
   maxWidth: number;
@@ -96,6 +104,7 @@ export function buildLevel(def: LevelDef): BuiltLevel {
     def,
     path,
     holes,
+    coinSpots: (def.coins ?? []).map((c) => ({ s: c.s + ENTRANCE_LENGTH, u: c.u })),
     spawnS: SPAWN_S,
     finishS: path.length - RUNOUT_LENGTH + 1.5,
     maxWidth,

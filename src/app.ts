@@ -2,12 +2,12 @@ import './style.css';
 import { Game } from './game/game';
 import { LEVELS } from './game/levels';
 import { initPhysics } from './game/physics';
-import { loadProgress } from './game/storage';
+import { loadProgress, loadWallet } from './game/storage';
 
-/** Loads the physics engine and saved progress, then starts the game. */
+/** Loads the physics engine, saved progress and the coin wallet, then starts the game. */
 export async function startApp(): Promise<void> {
-  const [progress] = await Promise.all([loadProgress(LEVELS.length), initPhysics()]);
-  const game = new Game(document.getElementById('app')!, progress);
+  const [progress, wallet] = await Promise.all([loadProgress(LEVELS.length), loadWallet(), initPhysics()]);
+  const game = new Game(document.getElementById('app')!, progress, wallet);
   game.start();
   const boot = document.getElementById('boot');
   if (boot) {

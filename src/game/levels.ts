@@ -1,3 +1,4 @@
+import { coinLine, coinRow, coinSpots } from './coins';
 import type { LevelDef } from './level';
 import { left, right, straight } from './path';
 
@@ -13,6 +14,7 @@ export const LEVELS: LevelDef[] = [
     grade: 0.1,
     segments: [straight(50)],
     width: [[0, 10]],
+    coins: [...coinRow(4, 6, 2), ...coinLine(18, -3, 28, 3, 6), ...coinRow(32, 5, 2, -3), ...coinLine(42, -3, 48, 0, 4)],
     theme: {
       tileA: '#3b82f6',
       tileB: '#60a5fa',
@@ -38,6 +40,14 @@ export const LEVELS: LevelDef[] = [
       [64, 3.6],
       [70, 6],
     ],
+    coins: [
+      ...coinRow(3, 4, 2),
+      ...coinLine(12, -3, 20, 0, 5),
+      ...coinRow(25, 4, 2),
+      ...coinLine(36, 0, 42, 2, 4),
+      ...coinRow(51, 6, 2.2),
+      ...coinRow(65, 3, 2),
+    ],
     theme: {
       tileA: '#14b8a6',
       tileB: '#5eead4',
@@ -54,6 +64,7 @@ export const LEVELS: LevelDef[] = [
     grade: 0.11,
     segments: [straight(15), left(90, 14), straight(10), right(90, 14), straight(12)],
     width: [[0, 7]],
+    coins: [...coinRow(3, 5, 2.5), ...coinRow(18, 7, 2.6, -1.6), ...coinRow(38.5, 3, 3), ...coinRow(49, 7, 2.6, 1.6), ...coinRow(70, 4, 2.5)],
     theme: {
       tileA: '#22c55e',
       tileB: '#86efac',
@@ -84,6 +95,13 @@ export const LEVELS: LevelDef[] = [
       { s: 63, u: 4.0, r: 1.2 },
       { s: 66, u: -4.2, r: 1.1 },
     ],
+    // A weaving line between the holes (computed to stay ≥ 1.1 m from every hole rim).
+    coins: coinSpots([
+      [2, 1.3], [4.5, 1.3], [7, 1.3], [9.5, 1.3], [12, 0.4], [14.5, -1.3], [17, -2.9],
+      [19.5, -3.5], [22, -3.5], [24.5, -1.3], [27, -0.2], [29.5, -0.2], [32, 0.2], [34.5, 2.2],
+      [37, 2.5], [39.5, 1.7], [42, -0.9], [44.5, -0.9], [47, -0.6], [49.5, -0.6], [52, -2.3],
+      [54.5, -3.5], [57, -3.5], [59.5, -3.8], [62, -3.7], [64.5, -0.9], [67, -0.7], [69.5, -0.7],
+    ]),
     theme: {
       tileA: '#f59e0b',
       tileB: '#fcd34d',
@@ -100,6 +118,14 @@ export const LEVELS: LevelDef[] = [
     grade: 0.12,
     segments: [straight(10), left(70, 10), right(140, 10), left(140, 10), right(70, 10), straight(10)],
     width: [[0, 5.5]],
+    coins: [
+      ...coinRow(2, 4, 2),
+      ...coinRow(12, 4, 2.8, -1.2),
+      ...coinRow(25, 8, 2.8, 1.2),
+      ...coinRow(49, 8, 2.8, -1.2),
+      ...coinRow(73.5, 3, 3, 1.2),
+      ...coinRow(85, 3, 2.5),
+    ],
     theme: {
       tileA: '#8b5cf6',
       tileB: '#c4b5fd',
@@ -116,6 +142,7 @@ export const LEVELS: LevelDef[] = [
     grade: 0.15,
     segments: [straight(8), left(450, 11), straight(8)],
     width: [[0, 5]],
+    coins: [...coinRow(2, 3, 2), ...coinRow(11, 11, 4, -1.0), ...coinRow(55, 10, 4, 1.2), ...coinRow(96, 3, 2)],
     theme: {
       tileA: '#ef4444',
       tileB: '#fca5a5',
@@ -148,6 +175,13 @@ export const LEVELS: LevelDef[] = [
       { s: 76, u: -1.8, r: 1.1 },
       { s: 80, u: 1.8, r: 1.1 },
     ],
+    // A weaving line between the holes (computed to stay ≥ 1.1 m from every hole rim).
+    coins: coinSpots([
+      [2, 1.3], [4.5, 1.3], [7, 1.4], [9.5, 1.4], [12, -1.4], [14.5, -1.4], [17, -2.3], [22, -1.6],
+      [24.5, -1.4], [27, -0.9], [29.5, 1.4], [32, 1.4], [34.5, 2.5], [39.5, 1.6], [42, 1.6],
+      [44.5, 0.5], [47, -1.4], [49.5, -1.6], [54.5, -2.5], [57, -1.4], [59.5, -1.4], [62, 1.3],
+      [64.5, 1.4], [67, 1.8], [72, 2.4], [74.5, 1.4], [77, 1.1], [79.5, -1.3], [82, -1.3],
+    ]),
     theme: {
       tileA: '#ec4899',
       tileB: '#f9a8d4',
@@ -179,6 +213,12 @@ export const LEVELS: LevelDef[] = [
       { s: 58, u: -1.2, r: 0.7 },
       { s: 68, u: 1.1, r: 0.7 },
     ],
+    // Down the middle, skipping the notches (computed to stay ≥ 1.1 m from every hole rim).
+    coins: coinSpots([
+      [2, -0.1], [4.5, -0.3], [7, -0.4], [9.5, 0], [12, 0.3], [17, 0], [19.5, 0], [22, -0.1],
+      [27, 0], [29.5, 0], [32, 0], [37, 0], [39.5, 0], [42, 0], [44.5, 0], [49.5, 0], [52, 0],
+      [54.5, 0], [59.5, 0.1], [62, -0.1], [64.5, 0], [69.5, -0.1], [72, 0],
+    ]),
     theme: {
       tileA: '#64748b',
       tileB: '#cbd5e1',

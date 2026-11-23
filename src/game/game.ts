@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { UI, type UIHandlers } from '../ui/ui';
 import { Autopilot } from './autopilot';
+import { emptyCoinCounts, rollCoins, totalCoins, touchedCoins, type CoinCounts, type SpawnedCoin } from './coins';
+import { CoinField } from './coinView';
 import { haptics } from './haptics';
 import { TouchInput } from './input';
 import { buildLevel, hasFallen, hasFinished, spawnPoint, type BuiltLevel } from './level';
@@ -8,10 +10,11 @@ import { LEVELS } from './levels';
 import { PhysicsWorld, PHYSICS, type Vec3 } from './physics';
 import { buildPlatform } from './platform';
 import { isUnlocked, nextPlayableLevel, recordCompletion, type ProgressData } from './progress';
-import { saveProgress } from './storage';
+import { saveProgress, saveWallet } from './storage';
 import { buildQualityLevels, QualityGovernor } from './quality';
 import { PathTracker } from './tracker';
 import { Environment, LevelView, createBall } from './view';
+import { addCoin, type Wallet } from './wallet';
 
 const QUALITY_KEY = 'rolling-ball-quality-v1';
 
@@ -31,13 +34,12 @@ function saveQualityLevel(level: number): void {
   }
 }
 
-type Mode = 'attract' | 'play';
+type Mode = 'menu' | 'play';
 type Phase = 'rolling' | 'fallen' | 'won';
 
 const CAMERA_BACK = 9;
 const CAMERA_UP = 5.5;
 const FALL_RESPAWN_DELAY = 1.7;
-const ATTRACT_RESPAWN_DELAY = 2.5;
 const MAX_STEPS_PER_FRAME = 6;
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -54,13 +56,19 @@ export class Game {
   /** Frame-rate report for device testing (Xcode / devicectl console). */
   private statFrames = 0;
   private statTime = 0;
+  private statWork = 0;
+  private statPhysics = 0;
 
   private level: BuiltLevel | null = null;
   private view: LevelView | null = null;
   private tracker: PathTracker | null = null;
   private autopilot: Autopilot | null = null;
 
-  private mode: Mode = 'attract';
+  private mode: Mode = 'menu';
+  /** An opaque screen (menu, level select) covers the game: nothing needs drawing. */
+  private covered = true;
+  /** Draw one frame even while paused (e.g. after a resize). */
+  private renderOnce = false;
   private phase: Phase = 'rolling';
   private paused = false;
   private phaseTime = 0;
@@ -82,12 +90,18 @@ export class Game {
   private readonly camPos = new THREE.Vector3();
   private camFrozen = false;
   private readonly accel: Vec3 = { x: 0, y: 0, z: 0 };
+  /** Coins of the current play (rolled fresh for every play of a level). */
+  private coins: SpawnedCoin[] = [];
+  private coinField: CoinField | null = null;
+  /** Coins collected during the current play, per color. */
+  private runCoins: CoinCounts = emptyCoinCounts();
   private readonly tmpA = new THREE.Vector3();
   private readonly tmpB = new THREE.Vector3();
 
   constructor(
     root: HTMLElement,
     private progress: ProgressData,
+    private wallet: Wallet,
   ) {
     const canvas = document.createElement('canvas');
     canvas.className = 'scene';
@@ -97,16 +111,21 @@ export class Game {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.95;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // PCFSoftShadowMap was removed from three.js; PCF is the supported soft-edged option.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
     this.env = new Environment(this.renderer, this.scene);
     this.env.setShadowMapSize(this.quality.current.shadowMapSize);
+    this.applyUiEffects();
     this.ball = createBall();
     this.scene.add(this.ball);
 
     const handlers: UIHandlers = {
       play: () => this.startLevel(nextPlayableLevel(this.progress, LEVELS.length)),
-      levels: () => this.ui.showLevels(this.progress),
+      levels: () => {
+        this.covered = true;
+        this.ui.showLevels(this.progress);
+      },
       select: (id) => {
         if (isUnlocked(this.progress, id)) this.startLevel(id);
       },
@@ -117,6 +136,7 @@ export class Game {
         this.falls = 0;
         this.setPaused(false);
         this.respawn();
+        this.spawnCoins();
       },
       next: () => {
         const id = (this.level?.def.id ?? 0) + 1;
@@ -145,24 +165,38 @@ export class Game {
 
   // ---------------------------------------------------------------- flow
 
+  /** Main menu over a static backdrop: no level is loaded and nothing is rendered. */
   private showMenu(): void {
+    this.unloadLevel();
     this.paused = false;
-    this.loadLevel(Math.min(this.progress.unlocked, LEVELS.length), 'attract');
-    this.ui.showMenu(nextPlayableLevel(this.progress, LEVELS.length));
+    this.mode = 'menu';
+    this.covered = true;
+    this.input.setEnabled(false);
+    this.ui.showMenu(nextPlayableLevel(this.progress, LEVELS.length), this.wallet);
   }
 
   private startLevel(id: number): void {
     this.paused = false;
-    this.loadLevel(id, 'play');
+    this.covered = false;
+    this.loadLevel(id);
     this.ui.showPlaying(this.level!.def);
   }
 
-  private loadLevel(id: number, mode: Mode): void {
-    const def = LEVELS.find((l) => l.id === id) ?? LEVELS[0];
+  private unloadLevel(): void {
     if (this.view) {
       this.scene.remove(this.view.group);
       this.view.dispose();
     }
+    this.view = null;
+    this.level = null;
+    this.tracker = null;
+    this.autopilot = null;
+    this.clearCoins();
+  }
+
+  private loadLevel(id: number): void {
+    const def = LEVELS.find((l) => l.id === id) ?? LEVELS[0];
+    this.unloadLevel();
     const level = buildLevel(def);
     const platform = buildPlatform(level);
     this.physics.setPlatform(platform.topCollider, platform.wallCollider);
@@ -172,26 +206,79 @@ export class Game {
     this.level = level;
     this.tracker = new PathTracker(level);
     this.autopilot = new Autopilot(level);
-    this.mode = mode;
+    this.mode = 'play';
     this.falls = 0;
-    this.input.setEnabled(mode === 'play');
+    this.input.setEnabled(true);
     this.respawn();
+    this.spawnCoins();
     this.quality.reset();
   }
 
-  /** Logs the average frame rate every 10 seconds (ignores pauses in the app). */
-  private reportFrameRate(dt: number): void {
+  /** A new play of the level: roll which designated spots hold coins, and their colors. */
+  private spawnCoins(): void {
+    this.clearCoins();
+    if (!this.level) return;
+    this.coins = rollCoins(this.level);
+    this.coinField = new CoinField(this.coins);
+    this.scene.add(this.coinField.group);
+    this.runCoins = emptyCoinCounts();
+    this.ui.setRunCoins(0);
+  }
+
+  private clearCoins(): void {
+    if (this.coinField) {
+      this.scene.remove(this.coinField.group);
+      this.coinField.dispose();
+    }
+    this.coinField = null;
+    this.coins = [];
+  }
+
+  /** Coins go straight into the wallet (and are saved), so a later fall never loses them. */
+  private collectCoins(): void {
+    for (const coin of touchedCoins(this.coins, this.currPos)) {
+      coin.collected = true;
+      this.coinField?.collect(coin, this.elapsed);
+      this.runCoins[coin.color]++;
+      this.wallet = addCoin(this.wallet, coin.color);
+      this.ui.setRunCoins(totalCoins(this.runCoins), coin.color);
+      haptics.tap();
+    }
+    void saveWallet(this.wallet);
+  }
+
+  /**
+   * Logs every 10 seconds: frame rate, how long the game's own code took per frame
+   * (physics + issuing the draw calls), quality level, and whether a frame-rate cap was
+   * detected. Little code time at a low frame rate means a cap or the GPU, not the game.
+   */
+  private reportFrameRate(dt: number, workMs: number, physicsMs: number): void {
     if (!(dt > 0) || dt > 0.25) return;
     this.statFrames++;
     this.statTime += dt;
+    this.statWork += workMs;
+    this.statPhysics += physicsMs;
     if (this.statTime < 10) return;
     const q = this.quality.current;
+    const n = this.statFrames;
     console.info(
-      `[perf] ${(this.statFrames / this.statTime).toFixed(1)} fps · quality ${this.quality.level} ` +
-        `(pixelRatio ${q.pixelRatio}, shadows ${q.shadowMapSize}) · ${this.mode} level ${this.level?.def.id ?? '-'}`,
+      `[perf] ${(n / this.statTime).toFixed(1)} fps · code ${(this.statWork / n).toFixed(1)} ms/frame ` +
+        `(physics ${(this.statPhysics / n).toFixed(1)}) · quality ${this.quality.level} ` +
+        `(pixelRatio ${q.pixelRatio}, shadows ${q.shadowMapSize})${this.quality.capped ? ' · frame rate capped' : ''}` +
+        ` · ${this.mode} level ${this.level?.def.id ?? '-'}`,
     );
     this.statFrames = 0;
     this.statTime = 0;
+    this.statWork = 0;
+    this.statPhysics = 0;
+  }
+
+  /**
+   * Frosted-glass panels (CSS backdrop blur) must be re-blurred every frame over the moving
+   * 3D scene, which is costly on older iPads. Below full quality they become solid panels.
+   */
+  private applyUiEffects(): void {
+    document.documentElement.classList.toggle('lite-fx', this.quality.level > 0);
   }
 
   /** Applies the governor's current render resolution and shadow detail. */
@@ -199,6 +286,7 @@ export class Game {
     const q = this.quality.current;
     this.renderer.setPixelRatio(q.pixelRatio);
     this.env.setShadowMapSize(q.shadowMapSize);
+    this.applyUiEffects();
     saveQualityLevel(this.quality.level);
     console.info(`Rendering quality → level ${this.quality.level}`, q);
   }
@@ -265,6 +353,7 @@ export class Game {
       falls: this.falls,
       nextName: next?.name ?? null,
       unlockedNext: result.unlockedNext,
+      coins: { ...this.runCoins },
     });
   }
 
@@ -274,8 +363,8 @@ export class Game {
     const a = this.accel;
     a.x = a.y = a.z = 0;
     if (this.phase !== 'rolling') return;
-    if (this.mode === 'attract' || this.autoplay) {
-      if (this.mode === 'play' && !this.timerRunning) {
+    if (this.autoplay) {
+      if (!this.timerRunning) {
         this.timerRunning = true;
         this.ui.showHint(false);
       }
@@ -317,6 +406,7 @@ export class Game {
     }
     if (this.phase !== 'rolling') return;
     if (this.mode === 'play' && this.timerRunning) this.runTime += PHYSICS.dt;
+    if (this.mode === 'play' && touchedCoins(this.coins, this.currPos).length > 0) this.collectCoins();
     if (hasFallen(level, tracker, t.y)) this.onFall();
     else if (hasFinished(level, tracker)) this.onWin();
   }
@@ -324,11 +414,7 @@ export class Game {
   private updatePhase(dt: number): void {
     if (this.phase === 'rolling') return;
     this.phaseTime += dt;
-    if (this.phase === 'fallen' && this.phaseTime >= (this.mode === 'play' ? FALL_RESPAWN_DELAY : 1.2)) {
-      this.respawn();
-    } else if (this.phase === 'won' && this.mode === 'attract' && this.phaseTime >= ATTRACT_RESPAWN_DELAY) {
-      this.respawn();
-    }
+    if (this.phase === 'fallen' && this.phaseTime >= FALL_RESPAWN_DELAY) this.respawn();
   }
 
   // ---------------------------------------------------------------- rendering
@@ -338,9 +424,13 @@ export class Game {
     const rawDt = this.lastTime ? (now - this.lastTime) / 1000 : 0;
     const dt = Math.min(rawDt, 0.1);
     this.lastTime = now;
+    // Nothing moves on the menus or while paused: skip the work (and save battery).
+    document.documentElement.classList.toggle('in-menu', this.covered || !this.level);
+    if (!this.level || this.covered || (this.paused && !this.renderOnce)) return;
+    this.renderOnce = false;
     this.elapsed += dt;
     if (this.quality.sample(rawDt)) this.applyQuality();
-    this.reportFrameRate(rawDt);
+    const workStart = performance.now();
 
     if (this.level && !this.paused) {
       this.accumulator += dt;
@@ -353,6 +443,7 @@ export class Game {
       if (steps >= MAX_STEPS_PER_FRAME) this.accumulator = 0;
       this.updatePhase(dt);
     }
+    const physicsMs = performance.now() - workStart;
 
     const alpha = this.paused ? 1 : Math.min(this.accumulator / PHYSICS.dt, 1);
     this.renderPos.lerpVectors(this.prevPos, this.currPos, alpha);
@@ -361,10 +452,12 @@ export class Game {
     if (!this.paused) this.updateCamera(dt);
     this.env.follow(this.renderPos, this.camera);
     this.view?.update(this.elapsed);
+    this.coinField?.update(this.elapsed);
     if (this.mode === 'play' && this.level && this.tracker) {
       this.ui.updateHud(this.runTime, this.falls, this.tracker.s / this.level.finishS);
     }
     this.renderer.render(this.scene, this.camera);
+    this.reportFrameRate(rawDt, performance.now() - workStart, physicsMs);
   };
 
   /** Chase camera behind the ball along the path; always looks straight at the ball. */
@@ -391,6 +484,7 @@ export class Game {
     const w = window.innerWidth;
     const h = window.innerHeight;
     this.renderer.setSize(w, h);
+    this.renderOnce = true;
     this.camera.aspect = w / h;
     // Keep a comfortable horizontal view in portrait.
     this.camera.fov = this.camera.aspect >= 1 ? 55 : 72;

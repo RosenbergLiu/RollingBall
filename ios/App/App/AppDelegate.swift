@@ -7,8 +7,30 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // iPadOS caps web content (and so the game) at 30 fps in Low Power Mode and when the
+        // device runs hot. Log both so frame-rate reports can be explained.
+        logPowerState("launch")
+        let center = NotificationCenter.default
+        center.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { [weak self] _ in
+            self?.logPowerState("changed")
+        }
+        center.addObserver(forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.logPowerState("changed")
+        }
         return true
+    }
+
+    private func logPowerState(_ reason: String) {
+        let info = ProcessInfo.processInfo
+        let thermal: String
+        switch info.thermalState {
+        case .nominal: thermal = "nominal"
+        case .fair: thermal = "fair"
+        case .serious: thermal = "serious"
+        case .critical: thermal = "critical"
+        @unknown default: thermal = "unknown"
+        }
+        print("[power] \(reason): lowPowerMode=\(info.isLowPowerModeEnabled) thermalState=\(thermal)")
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

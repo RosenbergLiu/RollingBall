@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Rolling Ball artwork</title>
+    <style>
+      body { margin: 0; padding: 24px; background: #1b1f2a; color: #e2e8f0; font: 14px -apple-system, sans-serif; }
+      .row { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+      figure { margin: 0; }
+      img { display: block; border-radius: 22%; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
+      img.splash { border-radius: 8px; }
+      figcaption { margin-top: 8px; color: #94a3b8; }
+    </style>
+  </head>
+  <body>
+    <!-- Renders the app icon and launch screen with the game's own 3D assets.
+         Open http://localhost:5173/tools/art.html with `npm run dev`; files land in resources/. -->
+    <p id="status">Rendering…</p>
+    <div class="row" id="out"></div>
+    <script type="module" src="./art.ts"></script>
+  </body>
+</html>

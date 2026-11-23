@@ -10,12 +10,13 @@
 # Usage:
 #   TEAM_ID=ABCDE12345 npm run ios:device              # first connected iPad
 #   TEAM_ID=ABCDE12345 npm run ios:device -- <UDID>    # a specific device
-# Optional: BUNDLE_ID=com.example.rollingball if the default identifier is taken.
+# Optional: BUNDLE_ID=<your.app.id>. The default adds your team ID to com.rollingball.game,
+# because that plain identifier is already registered by someone else at Apple.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 : "${TEAM_ID:?Set TEAM_ID to your Apple developer team ID (Xcode → Settings → Accounts → select the team)}"
-BUNDLE_ID="${BUNDLE_ID:-com.rollingball.game}"
+BUNDLE_ID="${BUNDLE_ID:-com.rollingball.game.t$(printf %s "$TEAM_ID" | tr "[:upper:]" "[:lower:]")}"
 DEVICE="${1:-}"
 
 if [ -z "$DEVICE" ]; then

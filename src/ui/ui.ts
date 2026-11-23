@@ -1,3 +1,4 @@
+import { COIN_COLORS, COIN_HEX, totalCoins, type CoinColor, type CoinCounts } from '../game/coins';
 import type { TouchVisual } from '../game/input';
 import type { LevelDef } from '../game/level';
 import { isUnlocked, type ProgressData } from '../game/progress';
@@ -23,7 +24,14 @@ export interface WinInfo {
   falls: number;
   nextName: string | null;
   unlockedNext: boolean;
+  /** Coins collected during this run, per color. */
+  coins: CoinCounts;
 }
+
+const COIN_NAMES: Record<CoinColor, string> = { yellow: 'Yellow', blue: 'Blue', purple: 'Purple', orange: 'Orange' };
+
+/** A small coin icon in the given color. */
+const coinIcon = (color: CoinColor) => `<span class="coin" style="--c:${COIN_HEX[color]}" aria-hidden="true"></span>`;
 
 type Screen = 'loading' | 'menu' | 'levels' | 'hud' | 'gameover' | 'win' | 'pause';
 
@@ -55,6 +63,7 @@ const TEMPLATE = /* html */ `
         <h1>Rolling<br/>Ball</h1>
       </div>
       <p class="tagline">Steer a steel ball down floating slopes. No fences. Don't fall.</p>
+      <div class="wallet" data-bind="wallet" aria-label="Your coins"></div>
       <button class="btn primary big" data-action="play">Play <span data-bind="play-level"></span></button>
       <button class="btn big" data-action="levels">Select Level</button>
       <p class="how">Touch &amp; drag anywhere — the ball is pushed toward your finger.<br/>The farther your finger is from the ball, the stronger the push.</p>
@@ -75,6 +84,7 @@ const TEMPLATE = /* html */ `
       <div class="pill level-pill"><b data-bind="hud-level"></b><span data-bind="hud-name"></span></div>
       <div class="pill timer" data-bind="hud-time">0.00</div>
       <div class="hud-right">
+        <div class="pill coins-pill" data-bind="hud-coins-pill"><span class="coin" data-bind="hud-coin-icon" style="--c:${COIN_HEX.yellow}"></span><b data-bind="hud-coins">0</b></div>
         <div class="pill falls">Falls <b data-bind="hud-falls">0</b></div>
         <button class="btn round" data-action="pause" aria-label="Pause">${PAUSE}</button>
       </div>
@@ -100,6 +110,7 @@ const TEMPLATE = /* html */ `
         <div><span>Best</span><b data-bind="win-best"></b><em data-bind="win-newbest">New best!</em></div>
         <div><span>Falls</span><b data-bind="win-falls"></b></div>
       </div>
+      <div class="win-coins" data-bind="win-coins"></div>
       <p class="unlock" data-bind="win-unlock"></p>
       <div class="actions">
         <button class="btn primary big" data-action="next" data-bind="win-next">Next Level ›</button>
@@ -177,8 +188,11 @@ export class UI {
     for (const [name, el] of this.screens) el.classList.toggle('visible', names.includes(name));
   }
 
-  showMenu(playLevel: number): void {
+  showMenu(playLevel: number, wallet: CoinCounts): void {
     this.bind('play-level').textContent = `· Level ${playLevel}`;
+    this.bind('wallet').innerHTML = COIN_COLORS.map(
+      (c) => `<span class="wallet-chip" title="${COIN_NAMES[c]} coins">${coinIcon(c)}<b>${wallet[c]}</b></span>`,
+    ).join('');
     this.setTouch(null);
     this.only('menu');
   }
@@ -232,6 +246,17 @@ export class UI {
     }
   }
 
+  /** Coins collected this run; `color` is the coin just picked up (bumps the counter). */
+  setRunCoins(total: number, color?: CoinColor): void {
+    this.bind('hud-coins').textContent = String(total);
+    if (!color) return;
+    this.bind('hud-coin-icon').style.setProperty('--c', COIN_HEX[color]);
+    const pill = this.bind('hud-coins-pill');
+    pill.classList.remove('bump');
+    void pill.offsetWidth; // restart the animation
+    pill.classList.add('bump');
+  }
+
   showHint(on: boolean): void {
     this.bind('hint').classList.toggle('visible', on);
   }
@@ -253,6 +278,12 @@ export class UI {
     this.bind('win-best').textContent = `${formatTime(info.best)}s`;
     this.bind('win-newbest').style.display = info.newBest ? '' : 'none';
     this.bind('win-falls').textContent = String(info.falls);
+    const got = COIN_COLORS.filter((c) => info.coins[c] > 0);
+    this.bind('win-coins').innerHTML =
+      totalCoins(info.coins) === 0
+        ? '<span class="win-coins-none">No coins this time</span>'
+        : `<span class="win-coins-label">Coins</span>` +
+          got.map((c) => `<span class="wallet-chip">${coinIcon(c)}<b>+${info.coins[c]}</b></span>`).join('');
     const next = this.bind('win-next') as HTMLButtonElement;
     if (info.nextName) {
       next.style.display = '';

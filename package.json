@@ -10,7 +10,8 @@
     "test": "vitest run",
     "ios": "npm run build && npx cap sync ios",
     "ios:open": "npx cap open ios",
-    "ios:device": "bash scripts/run-on-ipad.sh"
+    "ios:device": "bash scripts/run-on-ipad.sh",
+    "art:install": "bash scripts/install-art.sh"
   },
   "dependencies": {
     "@capacitor/core": "^8.6.2",
