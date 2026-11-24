@@ -416,6 +416,22 @@ export class SoundGraph {
     }
   }
 
+  /** Landing after a drop: a soft, low "thump" with a little wooden knock. */
+  thump(when: number): void {
+    const ctx = this.ctx;
+    const osc = ctx.createOscillator();
+    osc.frequency.setValueAtTime(150, when);
+    osc.frequency.exponentialRampToValueAtTime(55, when + 0.14);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, when);
+    env.gain.exponentialRampToValueAtTime(0.45, when + 0.006);
+    env.gain.exponentialRampToValueAtTime(0.0001, when + 0.22);
+    osc.connect(env).connect(this.master);
+    osc.start(when);
+    osc.stop(when + 0.25);
+    this.click(when);
+  }
+
   /** Boost arrows: a rising "whoosh" of air with a zooming tone underneath. */
   whoosh(when: number): void {
     const ctx = this.ctx;
@@ -612,6 +628,12 @@ export class Sound {
   note(semitones: number): void {
     if (!this.ready()) return;
     this.graph!.mallet(this.ctx!.currentTime + 0.005, noteHz(semitones));
+  }
+
+  /** The thump of landing after a drop. */
+  land(): void {
+    if (!this.ready()) return;
+    this.graph!.thump(this.ctx!.currentTime + 0.005);
   }
 
   /** The whoosh of rolling onto boost arrows. */

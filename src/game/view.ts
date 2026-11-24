@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { lips } from './drops';
 import type { BuiltLevel, Theme } from './level';
 import { pathAt } from './path';
 import { buildStrip, type MeshArrays, type PlatformMesh } from './platform';
@@ -239,6 +240,8 @@ export class LevelView {
   readonly group = new THREE.Group();
   private readonly bannerMat: THREE.MeshBasicMaterial;
   private readonly gates: GateView[] = [];
+  /** Glowing strips at the lips of drops. */
+  private readonly lipMats: THREE.MeshBasicMaterial[] = [];
 
   /** `platforms`: one per track piece, in the order of `level.pieces`. */
   constructor(level: BuiltLevel, platforms: PlatformMesh[]) {
@@ -327,6 +330,14 @@ export class LevelView {
     }
     this.setCheckpoint(-1, 0);
 
+    // Drops: a glowing amber strip across the last stretch before each lip says "jump here".
+    for (const piece of lips(level)) {
+      const end = piece.path.length;
+      const mat = new THREE.MeshBasicMaterial({ color: 0xfbbf24, toneMapped: false, transparent: true, depthWrite: false });
+      this.lipMats.push(mat);
+      this.group.add(new THREE.Mesh(toGeometry(buildStrip(piece, end - 1.2, end - 0.05, 0.02)), mat));
+    }
+
     this.group.add(this.createParticles(level, theme));
   }
 
@@ -369,6 +380,7 @@ export class LevelView {
 
   update(time: number): void {
     this.bannerMat.color.setScalar(0.85 + 0.15 * Math.sin(time * 4));
+    for (const m of this.lipMats) m.opacity = 0.6 + 0.35 * Math.sin(time * 5);
     for (const g of this.gates) {
       if (g.litAt < 0) {
         // Unlit gates breathe gently, inviting the ball through.

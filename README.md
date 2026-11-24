@@ -19,6 +19,8 @@ or gently uphill. Built with
 - Some levels have **special tiles**: orange **boost arrows** push the ball forward with a
   whoosh, and colored **music tiles** each play a note when the ball rolls onto them (follow
   the coins over the Musical Bridge to hear a song).
+- Some tracks end at a glowing **lip**: roll off it and land on a wider platform below.
+  Every speed lands safely.
 - Long levels have **checkpoints**: glowing gates across the track. Roll through one and it
   lights up; after a fall the ball comes back at the last gate passed instead of the
   entrance, and the timer keeps running. Restart Level and Replay start from the entrance.
@@ -50,6 +52,7 @@ or gently uphill. Built with
 | 9 | Grand Tour | A long adventure with 3 checkpoints |
 | 10 | Musical Bridge | Music tiles that play a song |
 | 11 | Zoom Zoom | Boost arrows |
+| 12 | Waterfall Steps | Drops onto lower steps |
 
 Levels live in [src/game/levels.ts](src/game/levels.ts). Each is a list of straight/arc segments
 with a grade (drop per meter: positive is downhill, 0 is flat, negative climbs), width
@@ -174,6 +177,7 @@ list them under "Other" until the app comes from the App Store or TestFlight.
 - `src/game/tracker.ts` – follows the ball along the track (piece, progress, lateral offset,
   height); moves to another piece when the ball lands on it.
 - `src/game/game.ts` – game loop, states, camera, input mapping.
+- `src/game/drops.ts` – drops: the `dropTo()` helper, the drop rules and where the lips are.
 - `src/game/surfaces.ts` – surface tiles (boost arrows, music tiles): format, rules, effects.
 - `src/game/surfaceView.ts` – how surface tiles look: scrolling arrows, xylophone keys.
 - `src/game/input.ts` – the control modes: touch and the on-screen joystick.

@@ -83,6 +83,8 @@ export class Game {
   private runTime = 0;
   private timerRunning = false;
   private falls = 0;
+  /** The ball moved to another piece (a drop) and hasn't touched down yet. */
+  private landingPending = false;
   /** Which surface tile (boost, music) the ball is on. */
   private readonly surfaceContact = new SurfaceContact();
   /** Index of the furthest checkpoint passed in this run (-1: none): a fall respawns there. */
@@ -355,6 +357,7 @@ export class Game {
     this.camFrozen = false;
     this.accumulator = 0;
     this.surfaceContact.reset();
+    this.landingPending = false;
     this.updateCamera(0, true);
   }
 
@@ -519,7 +522,17 @@ export class Game {
     const r = this.physics.ball.rotation();
     this.currPos.set(t.x, t.y, t.z);
     this.currQuat.set(r.x, r.y, r.z, r.w);
+    const pieceBefore = tracker.piece;
     tracker.update(this.currPos);
+    if (tracker.piece !== pieceBefore) this.landingPending = true;
+    if (this.landingPending && tracker.height < BALL_RADIUS + 0.15) {
+      // Touched down on the new piece after a drop.
+      this.landingPending = false;
+      if (this.mode === 'play' && this.phase === 'rolling') {
+        this.sound.land();
+        haptics.tap();
+      }
+    }
     if (this.phase === 'won') {
       if (hasFallen(level, tracker, t.y)) this.camFrozen = true;
       return;

@@ -37,8 +37,10 @@ beforeAll(async () => {
 describe('coin spots in the level catalog', () => {
   it.each(LEVELS)('level $id ($name) has well-placed coin spots', (def) => {
     const level = buildLevel(def);
-    expect(level.coinSpots.length).toBeGreaterThanOrEqual(15);
-    expect(level.coinSpots.length).toBeLessThanOrEqual(40);
+    // Spots on every track piece count.
+    const spots = level.pieces.reduce((n, piece) => n + piece.coinSpots.length, 0);
+    expect(spots).toBeGreaterThanOrEqual(15);
+    expect(spots).toBeLessThanOrEqual(40);
     expect(coinSpotProblems(level)).toEqual([]);
   });
 

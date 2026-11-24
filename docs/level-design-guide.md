@@ -366,6 +366,7 @@ unless the §7 feature you need already exists in the engine.
    - slopes follow §4: at most 0.2 either way, smooth changes, no climbing in the first 12 m
    - where the route passes over itself, the surfaces are at least 8 m apart
    - checkpoints follow §7.10, and the autopilot can finish the level from each of them
+   - track pieces follow §3 (valid ids and starts), drops follow §7.2
    - surface tiles follow §7.3: inside the platform, clear of holes, not overlapping; music
      keys at least 1.2 m long; boost pads on straights with a clear, calm 15 m after them
    - the shape differs from all other levels
@@ -421,15 +422,20 @@ Engine notes:
   the fork and merge design rules above, and a route choice for the autopilot so the tests
   cover both branches.
 
-### 7.2 Drops: falling onto a new platform on purpose
+### 7.2 Drops: falling onto a new platform on purpose ✅ built
 **Fresh because:** a moment of "whoa!" with no risk. The ball sails off a lip and lands on
 a lower platform.
 
-Draft format: a piece that starts *below and ahead* of the previous piece's end.
+Format: a track piece (§3) that starts under the open end of another piece (its lip).
+`dropTo()` in `src/game/drops.ts` builds it:
 ```ts
-{ id: 'lower', after: { piece: 'upper', drop: 2.5, gap: -1 }, segments: [...], width: [...] }
-// gap < 0: the landing platform starts 1 m *under* the lip (overlap), so even a slow ball lands.
+pieces: [
+  dropTo('step1', { from: 'main', lip: 20, height: 1.5 },   // lip = authored length of 'main'
+    { segments: [...], width: [[0, 12], ...] }),            // overlap (default 1.5 m) under the lip
+],
 ```
+The upper piece ends there (no run-out), so give the finish to the last piece (`finish: true`).
+Example: level 12, Waterfall Steps (drops of 1.5, 2.5 and 3.5 m).
 Physics for the rules: flight time is t = √(2·drop / 16). At a typical top speed of
 14 m/s the ball travels 14·t meters forward.
 
@@ -451,11 +457,18 @@ Design rules:
   flat "launch pad" before the lip.
 - **Waterfall:** a "waterfall staircase" of 3–5 small drops makes a great hook level.
 
-Engine notes:
+Built (checked by `dropProblems()`; the tests also roll a slow ball down every drop):
 
-- Change the fall rule from "2.2 m below *the* path" to "below every platform within reach".
-- The tracker switches pieces when the ball lands.
-- The camera eases its height during the fall.
+- Height 1.5–4 m, measured from where the landing hangs off the lip.
+- The landing starts at least 0.5 m under the lip, turns at most 10°, and keeps the lip's
+  footprint inside it (it is at least 1.5× the lip's width).
+- The landing zone (table above, counted from the lip) is straight, 0 to 0.06 downhill and
+  hole-free.
+- The last 6 m before the lip are a launch pad: straight, never climbing, no holes.
+- Look and feel: a glowing amber strip across the lip; landing plays a soft thump and a
+  light tap. The fall rule is "below every platform within reach", and the tracker moves to
+  the landing while the ball is still in the air. The chase camera follows the ball down
+  smoothly as it is.
 
 ### 7.3 Surface tiles (special materials) ✅ boost and music built
 Painted strips or patches with their own behavior, each with a distinct look:
@@ -660,7 +673,7 @@ gently). The showcase is a good place for the world's one checkpointed adventure
 **Existing levels (don't duplicate the hook).** World 1 teaches one basic each, from
 concepts A, D, E, C, U and G above plus a tutorial and a slalom, and ends with S (Grand
 Tour), its checkpointed showcase. Levels 10 and 11 start the surface tiles (J and a boost
-level). Concepts still free: B, F, H, I, K–R, T, V, W.
+level), and 12 the drops (H). Concepts still free: B, F, I, K–R, T, V, W.
 
 | # | Name | Hook | Feeling |
 |---|---|---|---|
@@ -675,6 +688,7 @@ level). Concepts still free: B, F, H, I, K–R, T, V, W.
 | 9 | Grand Tour | Adventure (~180 m) with 3 checkpoints: island, hills, lookout, slalom bend, sweep home | Wonder |
 | 10 | Musical Bridge | Music tiles: a rising scale, a three-lane song bridge, a curve that climbs the scale | Play |
 | 11 | Zoom Zoom | Boost arrows: on the flat, before a hill, in one lane of two, into the finish | Rush |
+| 12 | Waterfall Steps | Drops of 1.5, 2.5 and 3.5 m onto wider steps below, each step bending a little | Surprise |
 
 ---
 

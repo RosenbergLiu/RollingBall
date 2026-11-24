@@ -1,6 +1,7 @@
 import { coinLine, coinRow, coinSpots, type CoinSpot } from './coins';
 import type { LevelDef } from './level';
 import { left, right, straight } from './path';
+import { dropTo } from './drops';
 import { boostPad, musicTiles } from './surfaces';
 
 /** Coin spots on a ring of `radius` around (s, u), at the given angles (0° = straight ahead, 90° = right). */
@@ -551,6 +552,67 @@ export const LEVELS: LevelDef[] = [
       rim: '#facc15',
       skyTop: '#0c1b33',
       horizon: '#f59e0b',
+    },
+  },  {
+    // Surprise. Hook: drops. The track ends at a glowing lip and the ball sails down onto a
+    // wider step below: 1.5 m, then 2.5 m, then 3.5 m. Each landing step starts under the lip,
+    // so every speed lands; each bends a little and ends in a straight launch pad.
+    id: 12,
+    name: 'Waterfall Steps',
+    tagline: 'Roll off the edge and land on the step below. Whee!',
+    grade: 0.05,
+    segments: [straight(14, 0.06), straight(6, 0.02)],
+    width: [[0, 8]],
+    coins: [...coinRow(3, 4, 2.5), ...coinRow(15, 2, 2)],
+    pieces: [
+      dropTo(
+        'step1',
+        { from: 'main', lip: 20, height: 1.5 },
+        {
+          segments: [straight(13, 0.03), left(35, 24, 0.06), straight(6, 0.02)],
+          width: [
+            [0, 12],
+            [12, 12],
+            [17, 9],
+          ],
+          coins: [...coinRow(4, 4, 2.2), ...coinRow(15, 4, 3, -1.8), ...coinRow(29, 2, 2)],
+        },
+      ),
+      dropTo(
+        'step2',
+        { from: 'step1', lip: 33.66, height: 2.5 },
+        {
+          segments: [straight(14, 0.03), right(35, 24, 0.06), straight(6, 0.02)],
+          width: [
+            [0, 13.5],
+            [13.5, 13.5],
+            [19, 9],
+          ],
+          coins: [...coinRow(4.5, 4, 2.2), ...coinRow(16, 4, 3, 1.8), ...coinRow(30, 2, 2)],
+        },
+      ),
+      dropTo(
+        'step3',
+        { from: 'step2', lip: 34.66, height: 3.5 },
+        {
+          segments: [straight(16, 0.03), straight(10, 0.05)],
+          width: [
+            [0, 13.5],
+            [15, 13.5],
+            [22, 10],
+          ],
+          coins: [...coinRow(5, 5, 2.2), ...coinLine(18, -2, 24, 2, 3)],
+          finish: true,
+        },
+      ),
+    ],
+    theme: {
+      tileA: '#0891b2',
+      tileB: '#a5f3fc',
+      side: '#164e63',
+      rim: '#ecfeff',
+      skyTop: '#082f49',
+      horizon: '#60a5fa',
     },
   },
 ];

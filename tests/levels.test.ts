@@ -69,16 +69,30 @@ describe.each(LEVELS)('smooth rolling on level $id: $name', (def) => {
     let prev: { x: number; y: number; z: number; vx: number; vy: number; vz: number } | null = null;
     const stutters: string[] = [];
     let worstLift = 0;
+    // Drops (§7.2): from rolling off a lip until shortly after touching down below, the ball
+    // is meant to fly and land, so it isn't judged there.
+    let lastPiece = level as typeof level.pieces[number];
+    let dropping = false;
+    let settle = 0;
     const r = simulate(def, {
       controller: ({ tracker, pos, vel, out }) => {
-        if (prev) {
+        const atLip = tracker.piece.finishLine === null && tracker.s > tracker.piece.path.length - 0.5;
+        if (tracker.piece !== lastPiece || atLip) dropping = true;
+        lastPiece = tracker.piece;
+        if (dropping && !atLip && Math.abs(tracker.height - PHYSICS.ballRadius) < 0.05) {
+          dropping = false;
+          settle = 15;
+        }
+        const judge = !dropping && settle === 0;
+        if (settle > 0) settle--;
+        if (prev && judge) {
           const moved = Math.hypot(pos.x - prev.x, pos.y - prev.y, pos.z - prev.z);
           const expected = (Math.hypot(vel.x + prev.vx, vel.y + prev.vy, vel.z + prev.vz) / 2) * PHYSICS.dt;
           if (expected > 4 * PHYSICS.dt && Math.abs(moved / expected - 1) > 0.1) {
             stutters.push(`s ${tracker.s.toFixed(1)}: moved ${moved.toFixed(3)} m, expected ${expected.toFixed(3)} m`);
           }
           // Skimming a hole's rim legitimately dips the ball, so only judge it on solid ground.
-          const overRim = level.holes.some((h) => holeDistance(h, tracker.s, tracker.u) < h.r + PHYSICS.ballRadius);
+          const overRim = tracker.piece.holes.some((h) => holeDistance(h, tracker.s, tracker.u) < h.r + PHYSICS.ballRadius);
           if (!overRim) worstLift = Math.max(worstLift, Math.abs(tracker.height - PHYSICS.ballRadius));
         }
         prev = { x: pos.x, y: pos.y, z: pos.z, vx: vel.x, vy: vel.y, vz: vel.z };
