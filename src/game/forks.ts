@@ -1,6 +1,6 @@
 import type { CoinSpot } from './coins';
 import type { BuiltLevel, BuiltPiece, Hole, PieceDef } from './level';
-import { left, pathAt, right, straight, type Segment } from './path';
+import { left, pathAt, right, straight, trackLength, type Segment } from './path';
 import type { Surface } from './surfaces';
 import { locateOnPiece } from './tracker';
 
@@ -46,7 +46,7 @@ export function swing(side: 'left' | 'right', offset: number, radius: number, mi
 
 /** Length along the track of a swing (all four bends and the middle). */
 export function swingLength(offset: number, radius: number, middle: number): number {
-  return 4 * radius * Math.acos(1 - offset / (2 * radius)) + middle;
+  return trackLength(swing('left', offset, radius, middle, 0));
 }
 
 export interface ForkOptions {
@@ -94,7 +94,7 @@ export function forkProblems(level: BuiltLevel): string[] {
 
   // No dead ends: every piece but the finish rejoins another or ends in a drop.
   for (const p of level.pieces) {
-    if (p === level.finish || p.merge) continue;
+    if (p === level.finish || p.merge || p.dropOnto) continue;
     const dropsOn = level.pieces.some((c) => c.attach?.piece === p.id && c.attach.s >= p.path.length - 5);
     if (!dropsOn) problems.push(`piece ${p.id} is a dead end (it doesn't rejoin another piece, drop or finish)`);
   }
@@ -120,8 +120,10 @@ export function forkProblems(level: BuiltLevel): string[] {
 
     // Wherever it overlaps the track it leaves or joins, the two surfaces are level with each other.
     const len = branch.path.length;
+    // (A branch that starts as a drop's landing has no junction at its start.)
+    const startsAsDrop = branch.attach.s >= parent.path.length - 5;
     const zones: [BuiltPiece, number, number, number][] = [
-      [parent, 0, Math.min(FORK.junction, len), branch.attach.s],
+      ...(startsAsDrop ? [] : [[parent, 0, Math.min(FORK.junction, len), branch.attach.s] as [BuiltPiece, number, number, number]]),
       [target, Math.max(0, len - FORK.junction), len, branch.merge.s - len],
     ];
     for (const [other, s0, s1, shift] of zones) {
@@ -148,7 +150,7 @@ export function forkProblems(level: BuiltLevel): string[] {
 
     // Junctions: wide enough, no holes.
     for (const [piece, s, what] of [
-      [parent, branch.attach.s, 'leaves'],
+      ...(startsAsDrop ? [] : [[parent, branch.attach.s, 'leaves'] as [BuiltPiece, number, string]]),
       [target, branch.merge.s, 'rejoins'],
     ] as [BuiltPiece, number, string][]) {
       if (piece.widthAt(s) < FORK.minJunctionWidth) problems.push(`${where}: ${piece.id} is narrower than ${FORK.minJunctionWidth} m where it ${what}`);
@@ -157,7 +159,7 @@ export function forkProblems(level: BuiltLevel): string[] {
       }
     }
     for (const h of branch.holes) {
-      if (h.s < FORK.junction + h.r || h.s > len - FORK.junction - h.r) problems.push(`${where}: hole at s ${h.s} near a junction`);
+      if ((!startsAsDrop && h.s < FORK.junction + h.r) || h.s > len - FORK.junction - h.r) problems.push(`${where}: hole at s ${h.s} near a junction`);
     }
 
     // The two ways are of similar length…

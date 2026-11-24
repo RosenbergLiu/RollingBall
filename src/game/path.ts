@@ -29,6 +29,18 @@ export function segmentLength(seg: Segment): number {
   return seg.kind === 'straight' ? seg.length : ((Math.abs(seg.angle) * Math.PI) / 180) * seg.radius;
 }
 
+/** Distance between path samples (m); every segment is built from whole samples. */
+export const PATH_DS = 0.25;
+
+/**
+ * The length a run of segments really gets when built: each segment is a whole number of
+ * samples, so this can differ from the exact sum by a few centimeters. Use it for where a
+ * piece ends (a drop's lip, a fork's merge) so pieces line up to the millimeter.
+ */
+export function trackLength(segments: Segment[]): number {
+  return segments.reduce((sum, seg) => sum + Math.max(1, Math.round(segmentLength(seg) / PATH_DS)) * PATH_DS, 0);
+}
+
 export interface PathSample {
   pos: Vector3;
   /** Unit tangent, pointing forward along the route (down, level or up the slope). */
@@ -55,7 +67,7 @@ export type PathFrame = PathSample;
 const dirX = (h: number) => -Math.sin(h);
 const dirZ = (h: number) => -Math.cos(h);
 
-export function buildPath(segments: Segment[], defaultGrade: number, ds = 0.25, smoothMeters = 5): PathData {
+export function buildPath(segments: Segment[], defaultGrade: number, ds = PATH_DS, smoothMeters = 5): PathData {
   const startHeading: number[] = [];
   const endHeading: number[] = [];
   const stepGrade: number[] = [];

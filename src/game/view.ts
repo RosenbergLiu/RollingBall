@@ -331,9 +331,9 @@ export class LevelView {
     // Checkpoint gates: two posts and a bar in the level's rim color, and a glowing line
     // across the track. Dim until the ball rolls through, then lit (after a short flash).
     const gatePostGeo = new THREE.CylinderGeometry(0.1, 0.1, 3.8, 16);
-    for (const cs of level.checkpoints) {
-      const g = pathAt(level.path, cs);
-      const gw = level.widthAt(cs);
+    for (const { piece: gp, s: cs } of level.checkpoints) {
+      const g = pathAt(gp.path, cs);
+      const gw = gp.widthAt(cs);
       const rimColor = new THREE.Color(theme.rim);
       const mat = new THREE.MeshBasicMaterial({ color: rimColor.clone(), toneMapped: false });
       const lineMat = new THREE.MeshBasicMaterial({
@@ -342,7 +342,7 @@ export class LevelView {
         transparent: true,
         depthWrite: false,
       });
-      this.group.add(new THREE.Mesh(toGeometry(buildStrip(level, cs - 0.2, cs + 0.2, 0.02)), lineMat));
+      this.group.add(new THREE.Mesh(toGeometry(buildStrip(gp, cs - 0.2, cs + 0.2, 0.02)), lineMat));
       for (const side of [-1, 1]) {
         const post = new THREE.Mesh(gatePostGeo, mat);
         post.position.copy(g.pos).addScaledVector(g.right, side * (gw / 2 + 0.35));

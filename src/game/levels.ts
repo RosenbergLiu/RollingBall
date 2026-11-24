@@ -1,6 +1,6 @@
 import { coinLine, coinRow, coinSpots, type CoinSpot } from './coins';
 import type { LevelDef } from './level';
-import { left, right, straight } from './path';
+import { left, right, straight, trackLength } from './path';
 import { dropTo } from './drops';
 import { forkBranch, swing } from './forks';
 import { boostPad, musicTiles } from './surfaces';
@@ -18,6 +18,174 @@ const coinRing = (s: number, u: number, radius: number, degrees: number[]): Coin
  * stays gentle; what changes is the feeling. Distances are meters measured from the end of
  * the flat entrance pad; positive lateral offsets (u) are to the right of the direction of travel.
  */
+const degAcos = (x: number) => (Math.acos(x) * 180) / Math.PI;
+
+// ---------------------------------------------------------------- tangled levels
+// Two long "adventure" levels built from track pieces: ways that fork, cross over and under
+// each other at different heights (always 8 m+ apart), drop, and meet again. The numbers are
+// worked out so every junction lines up exactly; see docs/level-design-guide.md §7.1/§7.2.
+
+// 14, Twisted Braid: the main way drops twice early (low) while the other way stays high on a
+// sky bridge; they cross in an X (9 m apart); then the other way drops twice and merges back.
+// Both ways are mirror images, and every drop is on a forward-facing straight, so the merge
+// lines up to the millimeter.
+const BR_R1 = 14;
+const BR_H1 = 9; // each way swings out 9 m
+const BR_T1 = degAcos(1 - BR_H1 / (2 * BR_R1));
+const BR_R2 = 18;
+const BR_T2 = degAcos(1 - (2 * BR_H1) / (2 * BR_R2)); // cross from +9 to -9
+const BR_GS = 0.03; // the straights carrying the drops
+const braidMain = [straight(18, 0.05), straight(14, 0), right(BR_T1, BR_R1, 0), left(BR_T1, BR_R1, 0.06), straight(6, BR_GS)];
+const braidA3 = [straight(15.5, BR_GS), left(BR_T2, BR_R2, 0), right(BR_T2, BR_R2, 0), straight(34, 0), right(BR_T1, BR_R1, 0.06), left(BR_T1, BR_R1, 0)];
+const braidMergeAt = trackLength(braidA3);
+const braidB1 = [left(BR_T1, BR_R1, 0), right(BR_T1, BR_R1, 0.06), straight(34, 0), right(BR_T2, BR_R2, 0), left(BR_T2, BR_R2, 0), straight(6, BR_GS)];
+const braidB3 = [straight(15.5, BR_GS), left(BR_T1, BR_R1, 0.06), right(BR_T1, BR_R1, 0)];
+const braidS2 = trackLength(braidA3.slice(0, 3));
+
+const twistedBraid: LevelDef = {
+  id: 14,
+  name: 'Twisted Braid',
+  tagline: 'Two ways twist over and under each other. Pick one!',
+  grade: 0.05,
+  segments: braidMain,
+  width: [
+    [0, 8],
+    [24, 10],
+    [34, 8],
+    [52, 8],
+    [57, 6],
+  ],
+  checkpoints: [25],
+  coins: [
+    ...coinRow(3, 4, 2.5),
+    ...coinSpots([
+      [27.5, -2.5],
+      [27.5, 2.5],
+      [30, -3],
+      [30, 3],
+    ]),
+  ],
+  pieces: [
+    // The main way: two drops on its straight, so it is low when the ways cross.
+    dropTo('a2', { from: 'main', lip: trackLength(braidMain), height: 4 }, { segments: [straight(15.5, BR_GS)], width: [[0, 9]], coins: coinRow(4, 4, 2.2) }),
+    dropTo('a3', { from: 'a2', lip: 15.5, height: 4 }, {
+      segments: [...braidA3, straight(14, 0), straight(16, 0.02), straight(14, 0.05)],
+      width: [
+        [0, 13.5],
+        [16, 13.5],
+        [22, 8],
+        [braidMergeAt - 2, 8],
+        [braidMergeAt + 6, 10],
+      ],
+      coins: [...coinRow(4, 4, 2.2), ...coinRow(braidS2 + 6, 5, 4), ...coinRow(braidMergeAt + 4, 3, 2.5), ...coinLine(braidMergeAt + 34, -2, braidMergeAt + 42, 2, 3)],
+      surfaces: [boostPad(braidS2 + 0.5)],
+      checkpoints: [braidS2 + 14],
+      finish: true,
+    }),
+    // The other way: a high, level sky bridge with music keys, over the main way, then its drops.
+    {
+      id: 'b1',
+      from: { piece: 'main', s: 32 },
+      segments: braidB1,
+      width: [
+        [0, 8],
+        [trackLength(braidB1) - 10, 8],
+        [trackLength(braidB1) - 5, 6],
+      ],
+      coins: coinRow(46, 3, 3),
+      checkpoints: [40],
+      surfaces: musicTiles(24.5, 2.2, ['G5', 'A5', 'B5', 'C6', 'D6', 'E6']),
+    },
+    dropTo('b2', { from: 'b1', lip: trackLength(braidB1), height: 4 }, { segments: [straight(15.5, BR_GS)], width: [[0, 9]], coins: coinRow(4, 4, 2.2) }),
+    {
+      ...dropTo('b3', { from: 'b2', lip: 15.5, height: 4 }, {
+        segments: braidB3,
+        width: [
+          [0, 13.5],
+          [16, 13.5],
+          [22, 8],
+        ],
+        coins: coinRow(4, 3, 2.2),
+      }),
+      to: { piece: 'a3', s: braidMergeAt },
+    },
+  ],
+  theme: {
+    tileA: '#4c1d95',
+    tileB: '#c4b5fd',
+    side: '#1e0b3a',
+    rim: '#fde047',
+    skyTop: '#0b0820',
+    horizon: '#f472b6',
+  },
+};
+
+// 15, Spaghetti Junction: the main way loops down and passes under its own start (8 m+ below);
+// the high road crosses over it (10 m+ above), steps down twice on the far side and lands
+// beside the main way's lip: both ways drop into one wide pool (a double waterfall).
+const spagMain = [
+  straight(18, 0.05),
+  straight(14, 0),
+  right(BR_T1, BR_R1, 0),
+  right(270, 16, 0.11),
+  straight(30, 0.08),
+  right(43, 20, 0.04),
+  straight(84, 0.015),
+];
+const spagFinal = trackLength(spagMain.slice(0, 6));
+const spagHigh = [left(BR_T1, BR_R1, 0), straight(34, 0.02), right(BR_T1, 20, 0.02), straight(6, 0.02), straight(6, 0.03)];
+const spagT4 = degAcos(1 - 7 / (2 * BR_R1));
+const spagHigh3 = [straight(15.5, 0.03), right(spagT4, BR_R1, 0.06), left(spagT4, BR_R1, 0.06), straight(6, 0.02)];
+const spagPool = dropTo('pool', { from: 'main', lip: trackLength(spagMain), height: 2.5 }, {
+  segments: [straight(50, 0.02)],
+  width: [[0, 14]],
+  coins: [...coinRow(12, 4, 2.5, 3.5), ...coinRow(12, 4, 2.5, -3.5), ...coinLine(38, -2, 46, 2, 3)],
+  finish: true,
+});
+spagPool.from.u = -3.5; // shifted left, so the high road's lip lands on it beside the main way's lip
+const spaghettiJunction: LevelDef = {
+  id: 15,
+  name: 'Spaghetti Junction',
+  tagline: 'Loops, bridges and waterfalls. Every way meets at the pool!',
+  grade: 0.05,
+  segments: spagMain,
+  width: [
+    [0, 8],
+    [24, 10],
+    [36, 8],
+    [trackLength(spagMain) - 14, 8],
+    [trackLength(spagMain) - 8, 6],
+  ],
+  checkpoints: [25, spagFinal + 30],
+  coins: [
+    ...coinRow(3, 4, 2.5),
+    ...coinRow(52, 6, 4, 1.8),
+    ...coinRow(spagFinal + 8, 4, 2.5),
+    ...coinRow(spagFinal + 52, 4, 3),
+  ],
+  surfaces: [
+    boostPad(trackLength(spagMain.slice(0, 4)) + 0.5),
+    ...musicTiles(spagFinal + 38, 2, ['C5', 'D5', 'E5', 'G5', 'E5', 'G5', 'C6']),
+  ],
+  pieces: [
+    spagPool,
+    { id: 'high', from: { piece: 'main', s: 32 }, segments: spagHigh, width: [[0, 8], [trackLength(spagHigh) - 8, 6]], coins: coinRow(14, 5, 4) },
+    dropTo('high2', { from: 'high', lip: trackLength(spagHigh), height: 4 }, { segments: [straight(15.5, 0.03)], width: [[0, 9]], checkpoints: [7], coins: coinRow(3, 2, 2.5) }),
+    {
+      ...dropTo('high3', { from: 'high2', lip: 15.5, height: 4 }, { segments: spagHigh3, width: [[0, 13.5], [15.5, 13.5], [21, 6]], coins: coinRow(4, 4, 2.2) }),
+      dropOnto: 'pool',
+    },
+  ],
+  theme: {
+    tileA: '#ea580c',
+    tileB: '#fde68a',
+    side: '#431407',
+    rim: '#fef3c7',
+    skyTop: '#0c1324',
+    horizon: '#38bdf8',
+  },
+};
+
 export const LEVELS: LevelDef[] = [
   {
     // Tutorial. Hook: steer and collect. A long, wide, gentle slope with one slight bend;
@@ -671,4 +839,6 @@ export const LEVELS: LevelDef[] = [
       horizon: '#f59e0b',
     },
   },
+  twistedBraid,
+  spaghettiJunction,
 ];

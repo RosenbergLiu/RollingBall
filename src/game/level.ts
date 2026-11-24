@@ -2,6 +2,7 @@ import { Vector3 } from 'three';
 import type { CoinSpot } from './coins';
 import type { BuiltSurface, Surface } from './surfaces';
 import { buildPath, pathAt, segmentLength, straight, type PathData, type Segment } from './path';
+import { closestUnder, locateOnPiece } from './tracker';
 
 export interface Hole {
   /** Distance along the path in meters (from the start of the authored segments). */
@@ -63,6 +64,20 @@ export interface PieceDef {
    * and the authored s there. The end must line up with it (see forkProblems in forks.ts).
    */
   to?: { piece: string; s: number };
+  /**
+   * This piece ends in a lip above another piece (any id but its own): the ball drops onto
+   * it. A way to rejoin a lower route without lining up exactly (see dropProblems in drops.ts).
+   */
+  dropOnto?: string;
+  /** Checkpoint gates on this piece (authored s), e.g. after a fork's merge (see §7.10). */
+  checkpoints?: number[];
+}
+
+/** A checkpoint gate: the piece it is on, its absolute s there and its route distance. */
+export interface CheckpointRef {
+  piece: BuiltPiece;
+  s: number;
+  route: number;
 }
 
 /** The id of a level's own route (its `segments`, `width`, …). */
@@ -179,6 +194,8 @@ export interface BuiltPiece {
   attach: { piece: string; s: number } | null;
   /** The piece this one's end rejoins and the absolute s there (null: it doesn't merge). */
   merge: { piece: string; s: number } | null;
+  /** The piece this one's lip drops onto and the absolute s under the lip there (null: none). */
+  dropOnto: { piece: string; s: number } | null;
 }
 
 /**
@@ -194,8 +211,8 @@ export interface BuiltLevel extends BuiltPiece {
   finishS: number;
   /** Route distance of the finish line. */
   routeLength: number;
-  /** Checkpoint gates on the main route, absolute s, in order. */
-  checkpoints: number[];
+  /** Checkpoint gates on any piece, in route order. */
+  checkpoints: CheckpointRef[];
   spawnS: number;
 }
 
@@ -310,6 +327,7 @@ function buildPiece(
     finishLine: src.runout ? path.length - RUNOUT_LENGTH + 1.5 : null,
     attach,
     merge,
+    dropOnto: null,
   };
 }
 
@@ -343,6 +361,16 @@ export function buildLevel(def: LevelDef): BuiltLevel {
       ),
     );
   }
+  // Lips that drop onto another piece: where on it the ball lands (right under the lip).
+  for (const p of extra) {
+    if (!p.dropOnto) continue;
+    const piece = pieces.find((q) => q.id === p.id);
+    const target = pieces.find((q) => q.id === p.dropOnto && q !== piece);
+    if (!piece || !target) continue;
+    const lip = piece.path.samples[piece.path.samples.length - 1].pos;
+    const start = closestUnder(target, lip);
+    if (start >= 0) piece.dropOnto = { piece: target.id, s: locateOnPiece(target, lip, start).s };
+  }
   const finish = pieces.find((q) => q.finishLine !== null) ?? main;
   const finishS = finish.finishLine ?? finish.path.length;
   const level = main as BuiltLevel;
@@ -351,7 +379,13 @@ export function buildLevel(def: LevelDef): BuiltLevel {
   level.finish = finish;
   level.finishS = finishS;
   level.routeLength = finish.routeStart + finishS;
-  level.checkpoints = (def.checkpoints ?? []).map((s) => s + ENTRANCE_LENGTH);
+  level.checkpoints = [
+    ...(def.checkpoints ?? []).map((s) => ({ piece: main, s: s + ENTRANCE_LENGTH, route: s + ENTRANCE_LENGTH })),
+    ...extra.flatMap((d) => {
+      const piece = pieces.find((q) => q.id === d.id);
+      return piece ? (d.checkpoints ?? []).map((s) => ({ piece, s, route: piece.routeStart + s })) : [];
+    }),
+  ].sort((a, b) => a.route - b.route);
   level.spawnS = SPAWN_S;
   // Falling far below every piece also ends a run (see hasFallen).
   level.minY = Math.min(...pieces.map((q) => q.minY));
@@ -393,6 +427,11 @@ export function pieceProblems(def: LevelDef): string[] {
       else if (p.to.s < 0 || p.to.s > targetLength) problems.push(`${where} merges at s ${p.to.s}, outside "${p.to.piece}"`);
       if (p.to.piece === p.from.piece && p.to.s <= p.from.s) problems.push(`${where} merges back before where it starts`);
       if (p.finish) problems.push(`${where} both merges and has the finish`);
+    }
+    if (p.dropOnto !== undefined) {
+      const ids = new Set([MAIN_PIECE, ...(def.pieces ?? []).map((q) => q.id)]);
+      if (!ids.has(p.dropOnto) || p.dropOnto === p.id) problems.push(`${where} drops onto "${p.dropOnto}", which is not another piece`);
+      if (p.to || p.finish) problems.push(`${where} drops onto another piece, so it can't also merge or have the finish`);
     }
     if (p.segments.length === 0) problems.push(`${where} has no segments`);
     if (p.width.length === 0) problems.push(`${where} has no width`);
@@ -449,7 +488,8 @@ export function overlapProblems(level: BuiltLevel): string[] {
   };
   const nearStart = (child: BuiltPiece, cs: number, parent: BuiltPiece, ps: number) =>
     (child.attach?.piece === parent.id && cs < JOIN_ZONE && Math.abs(ps - child.attach.s) < JOIN_ZONE) ||
-    (child.merge?.piece === parent.id && cs > child.path.length - JOIN_ZONE && Math.abs(ps - child.merge.s) < JOIN_ZONE);
+    (child.merge?.piece === parent.id && cs > child.path.length - JOIN_ZONE && Math.abs(ps - child.merge.s) < JOIN_ZONE) ||
+    (child.dropOnto?.piece === parent.id && cs > child.path.length - JOIN_ZONE && Math.abs(ps - child.dropOnto.s) < JOIN_ZONE);
   const seen = new Set<string>();
   for (let i = 0; i < pts.length; i++) {
     for (let j = i + 1; j < pts.length; j++) {
@@ -510,26 +550,28 @@ export function segmentAt(piece: BuiltPiece, s: number): { seg: Segment; grade: 
  * somewhere calm, never facing a hazard: on a straight, gentle, wide, hole-free rest area.
  */
 export function checkpointProblems(level: BuiltLevel): string[] {
-  const def = level.def;
   const R = CHECKPOINT_RULES;
-  const cps = def.checkpoints ?? [];
+  const cps = level.checkpoints;
   const problems: string[] = [];
-  const authored = level.authoredLength;
   if (cps.length > R.max) problems.push(`${cps.length} checkpoints (at most ${R.max})`);
-  cps.forEach((s, i) => {
-    const where = `checkpoint ${i} (s ${s})`;
-    const prev = i === 0 ? 0 : cps[i - 1];
-    if (s - prev < R.minGap) problems.push(`${where} is less than ${R.minGap} m after ${i === 0 ? 'the start' : `checkpoint ${i - 1}`}`);
-    if (level.routeLength - (s + ENTRANCE_LENGTH) < R.minToFinish) problems.push(`${where} is less than ${R.minToFinish} m before the finish line`);
-    if (s + R.restAfter > authored) problems.push(`${where} is too close to the end of the route`);
+  cps.forEach((cp, i) => {
+    const { piece } = cp;
+    const s = cp.s - piece.offset;
+    const where = `checkpoint ${i} (${piece.id === MAIN_PIECE ? '' : `piece ${piece.id} `}s ${s})`;
+    const prev = i === 0 ? ENTRANCE_LENGTH : cps[i - 1].route;
+    if (cp.route - prev < R.minGap) problems.push(`${where} is less than ${R.minGap} m after ${i === 0 ? 'the start' : `checkpoint ${i - 1}`}`);
+    if (level.routeLength - cp.route < R.minToFinish) problems.push(`${where} is less than ${R.minToFinish} m before the finish line`);
+    if (s + R.restAfter > piece.authoredLength) problems.push(`${where} is too close to the end of its piece`);
+    // Every player meets it: never on a way that rejoins another (a fork's branch, a high road).
+    if (piece.merge || piece.dropOnto) problems.push(`${where} is on a branch; put it before the fork or after the ways meet`);
     for (let x = s - R.restBefore; x <= s + R.restAfter + 1e-9; x += 0.5) {
-      if (level.widthAt(x + ENTRANCE_LENGTH) < R.minWidth) {
+      if (piece.widthAt(x + piece.offset) < R.minWidth) {
         problems.push(`${where}: narrower than ${R.minWidth} m at s ${x.toFixed(1)}`);
         break;
       }
     }
     for (let x = s - R.restBefore; x <= s + R.restBefore + 1e-9; x += 0.5) {
-      const at = segmentAt(level, x);
+      const at = segmentAt(piece, x);
       if (!at) continue;
       if (at.seg.kind !== 'straight') {
         problems.push(`${where}: not on a straight at s ${x.toFixed(1)}`);
@@ -540,20 +582,21 @@ export function checkpointProblems(level: BuiltLevel): string[] {
         break;
       }
     }
-    for (const h of def.holes ?? []) {
-      if (h.s + h.r > s - R.restBefore && h.s - h.r < s + R.restAfter) problems.push(`${where}: hole at s ${h.s} is too close`);
+    for (const h of piece.holes) {
+      const hs = h.s - piece.offset;
+      if (hs + h.r > s - R.restBefore && hs - h.r < s + R.restAfter) problems.push(`${where}: hole at s ${hs} is too close`);
     }
   });
   return problems;
 }
 
 /**
- * Index of the furthest checkpoint the ball at `s` has passed (absolute s), or `reached`
- * if none further. Checkpoints only ever move forward: rolling back doesn't undo one.
+ * Index of the furthest checkpoint the ball has passed (on `piece` at absolute `s`), or
+ * `reached` if none further. Checkpoints only ever move forward: rolling back doesn't undo one.
  */
-export function passedCheckpoint(checkpoints: number[], s: number, reached: number): number {
+export function passedCheckpoint(checkpoints: CheckpointRef[], piece: BuiltPiece, s: number, reached: number): number {
   let k = reached;
-  for (let i = reached + 1; i < checkpoints.length; i++) if (s >= checkpoints[i]) k = i;
+  for (let i = reached + 1; i < checkpoints.length; i++) if (checkpoints[i].piece === piece && s >= checkpoints[i].s) k = i;
   return k;
 }
 

@@ -26,7 +26,12 @@ export class Autopilot {
     if (this.route.size === 0) return null;
     return (
       this.level.pieces.find(
-        (b) => this.route.has(b.id) && b.merge && b.attach?.piece === piece.id && s >= b.attach.s - 1 && s <= b.attach.s + 15,
+        (b) =>
+          this.route.has(b.id) &&
+          b.attach?.piece === piece.id &&
+          b.attach.s < piece.path.length - 5 && // a branch, not a drop's landing
+          s >= b.attach.s - 1 &&
+          s <= b.attach.s + 15,
       ) ?? null
     );
   }

@@ -24,12 +24,13 @@ export type Controller = (ctx: { tracker: PathTracker; pos: Vec3; vel: Vec3; out
 
 /**
  * Runs a level headlessly with the real physics and rules. Defaults to the autopilot.
- * `startS` (absolute s) starts the ball at rest there instead of the entrance, e.g. at a checkpoint.
+ * `startS` (absolute s, on `startPiece`, default main) starts the ball at rest there instead
+ * of the entrance, e.g. at a checkpoint.
  * `route` lists fork branches the autopilot takes.
  */
 export function simulate(
   def: LevelDef,
-  opts: { maxTime?: number; controller?: Controller; startS?: number; route?: string[] } = {},
+  opts: { maxTime?: number; controller?: Controller; startS?: number; startPiece?: string; route?: string[] } = {},
 ): SimResult {
   const level = buildLevel(def);
   const platforms = level.pieces.map((piece) => buildPlatform(piece));
@@ -40,8 +41,9 @@ export function simulate(
   const pilot = new Autopilot(level);
   for (const id of opts.route ?? []) pilot.route.add(id);
   const startS = opts.startS ?? level.spawnS;
-  physics.placeBall(spawnPoint(level, startS));
-  tracker.reset(startS);
+  const startPiece = level.pieces.find((p) => p.id === opts.startPiece) ?? level;
+  physics.placeBall(spawnPoint(startPiece, startS));
+  tracker.reset(startS, startPiece);
   const accel: Vec3 = { x: 0, y: 0, z: 0 };
   const maxTime = opts.maxTime ?? 120;
   let maxSpeed = 0;

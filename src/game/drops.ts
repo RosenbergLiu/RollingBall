@@ -67,6 +67,7 @@ export interface LandingPiece {
   coins?: CoinSpot[];
   surfaces?: Surface[];
   finish?: boolean;
+  checkpoints?: number[];
 }
 
 /** A landing piece for a drop off the end of `from` (see DropOptions). */
@@ -138,10 +139,55 @@ export function dropProblems(level: BuiltLevel): string[] {
       if (h.s + h.r > pad0 + parent.offset) problems.push(`${where}: hole at s ${h.s - parent.offset} on the launch pad`);
     }
   }
+  // Lips that drop onto another piece (a high road rejoining a lower one).
+  for (const piece of level.pieces) {
+    if (!piece.dropOnto) {
+      if (defs.get(piece.id)?.dropOnto) problems.push(`drop from ${piece.id}: its lip isn't above "${defs.get(piece.id)!.dropOnto}"`);
+      continue;
+    }
+    const target = level.pieces.find((p) => p.id === piece.dropOnto!.piece)!;
+    const where = `drop from ${piece.id} onto ${target.id}`;
+    const lip = piece.path.samples[piece.path.samples.length - 1];
+    const land = piece.dropOnto.s;
+    const under = pathAt(target.path, land);
+    const height = lip.pos.y - under.pos.y;
+    if (height < DROP.minHeight - 1e-6 || height > DROP.maxHeight + 1e-6) {
+      problems.push(`${where}: ${height.toFixed(1)} m high (${DROP.minHeight} to ${DROP.maxHeight})`);
+    }
+    if (land < DROP.minOverlap) problems.push(`${where}: the track below must start at least ${DROP.minOverlap} m before the lip`);
+    const dot = (lip.tan.x * under.tan.x + lip.tan.z * under.tan.z) / (Math.hypot(lip.tan.x, lip.tan.z) * Math.hypot(under.tan.x, under.tan.z));
+    if (Math.acos(Math.min(1, dot)) * (180 / Math.PI) > DROP.maxTurn) problems.push(`${where}: the track below turns more than ${DROP.maxTurn}° from the lip`);
+    const lipWidth = piece.widthAt(piece.path.length);
+    const lipU = Math.abs((lip.pos.x - under.pos.x) * under.right.x + (lip.pos.z - under.pos.z) * under.right.z);
+    const need = landingLength(height);
+    for (let s = land; s <= land + need + 1e-9; s += 0.5) {
+      const w = target.widthAt(s);
+      if (w < lipWidth * DROP.landingWidthFactor - 1e-6 || lipU > (w - lipWidth) / 2 + 1e-6) {
+        problems.push(`${where}: the landing is narrower than ${DROP.landingWidthFactor}× the lip (or off to the side) at s ${(s - target.offset).toFixed(1)}`);
+        break;
+      }
+      const at = segmentAt(target, s - target.offset);
+      if (!at || at.seg.kind !== 'straight' || at.grade < 0 || at.grade > DROP.maxLandingGrade) {
+        problems.push(`${where}: the landing zone must be straight and gentle (0 to ${DROP.maxLandingGrade}) for ${need.toFixed(1)} m`);
+        break;
+      }
+    }
+    for (const h of target.holes) {
+      if (h.s + h.r > land && h.s - h.r < land + need) problems.push(`${where}: hole at s ${h.s - target.offset} in the landing zone`);
+    }
+    const pad0 = piece.authoredLength - DROP.launchPad;
+    for (let s = pad0 + 0.05; s <= piece.authoredLength + 1e-9; s += 0.5) {
+      const at = segmentAt(piece, s);
+      if (at && (at.seg.kind !== 'straight' || at.grade < 0)) {
+        problems.push(`${where}: the last ${DROP.launchPad} m before the lip must be straight and not climbing`);
+        break;
+      }
+    }
+  }
   return problems;
 }
 
 /** Where the lips are (piece and absolute s of its end), for drawing the lip marker. */
 export function lips(level: BuiltLevel): BuiltPiece[] {
-  return level.pieces.filter((parent) => level.pieces.some((child) => isLipOf(parent, child)));
+  return level.pieces.filter((parent) => parent.dropOnto || level.pieces.some((child) => isLipOf(parent, child)));
 }

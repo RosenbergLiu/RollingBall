@@ -55,6 +55,8 @@ or gently uphill. Built with
 | 11 | Zoom Zoom | Boost arrows |
 | 12 | Waterfall Steps | Drops onto lower steps |
 | 13 | Two Paths | A fork: pick a way, they meet again |
+| 14 | Twisted Braid | Two ways cross over and under each other |
+| 15 | Spaghetti Junction | Loops, bridges and a double waterfall |
 
 Levels live in [src/game/levels.ts](src/game/levels.ts). Each is a list of straight/arc segments
 with a grade (drop per meter: positive is downhill, 0 is flat, negative climbs), width

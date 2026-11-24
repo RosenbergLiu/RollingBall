@@ -151,7 +151,10 @@ Facts about the format:
   `musicTiles` and `note` come from `src/game/surfaces.ts`; `surfaceProblems()` checks them.
 - `checkpoints` lists gate positions (authored `s`, in order). Each must sit on a calm rest
   area; `checkpointProblems()` in `src/game/level.ts` checks the §7.10 rules. Grand Tour
-  (level 9) is the example.
+  (level 9) is the example. Pieces can have `checkpoints` too (levels 14 and 15).
+- Where a piece ends (a drop's `lip`, a merge's `to.s`), use `trackLength(segments)` from
+  `src/game/path.ts`, not the exact sum: every segment is built from whole 0.25 m samples,
+  and junctions must line up to the millimeter.
 
 ---
 
@@ -486,6 +489,15 @@ Built (checked by `dropProblems()`; the tests also roll a slow ball down every d
   the landing while the ball is still in the air. The chase camera follows the ball down
   smoothly as it is.
 
+**Dropping onto another piece** (a high road rejoining a lower one): instead of a landing of
+its own, a piece can end in a lip above another piece: `dropOnto: 'pool'`. The same rules
+apply, measured on that piece (height, 1.5× wide, the lip's footprint inside it, a straight
+gentle landing zone). Never let it hang over a track people ride along: riders would pass
+right under the lip and the camera would clip it. The neat way is a **double waterfall**: two
+ways arrive side by side, each with its own lip, over one wide landing (Spaghetti Junction:
+the main way's lip has the `pool` as its landing, shifted sideways with `from.u`, and the
+high road's lip `dropOnto: 'pool'` beside it).
+
 ### 7.3 Surface tiles (special materials) ✅ boost and music built
 Painted strips or patches with their own behavior, each with a distinct look:
 
@@ -601,8 +613,10 @@ frustrating.
   before the next challenge.
 - **Between beats:** after a hook's "play" part and before its "twist", after a drop's
   landing zone, or after a fork's merge plaza.
-- **Never on a branch** of a fork (§7.1): put it before the fork or after the merge, so
-  every player meets it.
+- **Every player meets one:** never on a single branch of a fork. Put it before the fork
+  or after the merge, or give each way of a long fork its own gate (Twisted Braid and
+  Spaghetti Junction do). A gate on the last piece of a way that rejoins another (a branch
+  with `to` or `dropOnto`) is flagged.
 - **Never right before the finish.** Give the last checkpoint at least 20 m to the
   finish line, so it's worth having.
 
@@ -626,8 +640,8 @@ frustrating.
 
 **Data format**
 ```ts
-checkpoints: [42, 88],   // authored s of each gate, in order
-// with route graphs (§7.1), later: checkpoints: [{ piece: 'main', s: 42 }]
+checkpoints: [42, 88],   // authored s of each gate on the main route, in order
+// on a track piece: pieces: [{ id: 'a3', …, checkpoints: [60] }]
 ```
 
 **Rules the tests check** (`checkpointProblems()`)
@@ -689,7 +703,8 @@ gently). The showcase is a good place for the world's one checkpointed adventure
 **Existing levels (don't duplicate the hook).** World 1 teaches one basic each, from
 concepts A, D, E, C, U and G above plus a tutorial and a slalom, and ends with S (Grand
 Tour), its checkpointed showcase. Levels 10 and 11 start the surface tiles (J and a boost
-level), 12 the drops (H) and 13 the forks (I). Concepts still free: B, F, K–R, T, V, W.
+level), 12 the drops (H) and 13 the forks (I); 14 and 15 tangle forks, drops and
+overpasses together. Concepts still free: B, F, K–R, T, V, W.
 
 | # | Name | Hook | Feeling |
 |---|---|---|---|
@@ -706,6 +721,8 @@ level), 12 the drops (H) and 13 the forks (I). Concepts still free: B, F, K–R,
 | 11 | Zoom Zoom | Boost arrows: on the flat, before a hill, in one lane of two, into the finish | Rush |
 | 12 | Waterfall Steps | Drops of 1.5, 2.5 and 3.5 m onto wider steps below, each step bending a little | Surprise |
 | 13 | Two Paths | A fork: the right way is a coin trail, the left way plays music keys; they meet again | Choice |
+| 14 | Twisted Braid | Adventure (~235 m): two mirror-image ways cross in an X 9 m apart; each drops twice (one early, one late) and they merge | Wonder, choice |
+| 15 | Spaghetti Junction | Adventure (~305 m): a loop that passes under its own start, a high road crossing over it and stepping down, a double waterfall into one pool | Wonder, choice |
 
 ---
 

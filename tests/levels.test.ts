@@ -244,12 +244,12 @@ describe('checkpoints', () => {
     for (const def of LEVELS) expect(checkpointProblems(buildLevel(def)), def.name).toEqual([]);
   });
 
-  it.each(LEVELS.filter((l) => (l.checkpoints ?? []).length > 0))(
+  it.each(LEVELS.filter((l) => buildLevel(l).checkpoints.length > 0))(
     'level $id ($name) can be finished from each of its checkpoints',
     (def) => {
-      for (const cs of buildLevel(def).checkpoints) {
-        const r = simulate(def, { startS: cs });
-        expect(r, `from checkpoint at s ${cs}: reached s=${r.s.toFixed(1)}`).toMatchObject({ outcome: 'won' });
+      for (const cp of buildLevel(def).checkpoints) {
+        const r = simulate(def, { startS: cp.s, startPiece: cp.piece.id });
+        expect(r, `from checkpoint at ${cp.piece.id} s ${cp.s}: reached s=${r.s.toFixed(1)}`).toMatchObject({ outcome: 'won' });
       }
     },
   );
@@ -278,12 +278,15 @@ describe('checkpoints', () => {
   });
 
   it('activate in order, only forward: rolling back never undoes one', () => {
-    const cps = [10, 20, 30];
-    expect(passedCheckpoint(cps, 5, -1)).toBe(-1);
-    expect(passedCheckpoint(cps, 12, -1)).toBe(0);
-    expect(passedCheckpoint(cps, 25, 0)).toBe(1);
-    expect(passedCheckpoint(cps, 35, -1)).toBe(2); // the furthest one passed wins
-    expect(passedCheckpoint(cps, 5, 1)).toBe(1); // rolled back behind the gate
-    expect(passedCheckpoint([], 50, -1)).toBe(-1);
+    const level = buildLevel(LEVELS[0]);
+    const other = { ...level, id: 'other' };
+    const cps = [10, 20, 30].map((s) => ({ piece: level as typeof level.pieces[number], s, route: s }));
+    expect(passedCheckpoint(cps, level, 5, -1)).toBe(-1);
+    expect(passedCheckpoint(cps, level, 12, -1)).toBe(0);
+    expect(passedCheckpoint(cps, level, 25, 0)).toBe(1);
+    expect(passedCheckpoint(cps, level, 35, -1)).toBe(2); // the furthest one passed wins
+    expect(passedCheckpoint(cps, level, 5, 1)).toBe(1); // rolled back behind the gate
+    expect(passedCheckpoint(cps, other, 35, -1)).toBe(-1); // only gates on the ball's own piece
+    expect(passedCheckpoint([], level, 50, -1)).toBe(-1);
   });
 });

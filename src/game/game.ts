@@ -5,7 +5,17 @@ import { emptyCoinCounts, rollCoins, totalCoins, touchedCoins, type CoinCounts, 
 import { CoinField } from './coinView';
 import { haptics } from './haptics';
 import { Controls } from './input';
-import { BALL_RADIUS, buildLevel, hasFallen, hasFinished, passedCheckpoint, routeProgress, spawnPoint, type BuiltLevel } from './level';
+import {
+  BALL_RADIUS,
+  buildLevel,
+  hasFallen,
+  hasFinished,
+  passedCheckpoint,
+  routeProgress,
+  spawnPoint,
+  type BuiltLevel,
+  type BuiltPiece,
+} from './level';
 import { LEVELS } from './levels';
 import { PhysicsWorld, PHYSICS, type Vec3 } from './physics';
 import { buildPlatform, levelColliders } from './platform';
@@ -340,11 +350,11 @@ export class Game {
   }
 
   /** Puts the ball at rest on the centerline at `s`, with the camera snapped behind it. */
-  private placeBallAt(s: number): void {
-    const p = spawnPoint(this.level!, s);
+  private placeBallAt(s: number, piece: BuiltPiece = this.level!): void {
+    const p = spawnPoint(piece, s);
     this.physics.placeBall(p);
     this.physics.setBraking(false);
-    this.tracker!.reset(s);
+    this.tracker!.reset(s, piece);
     this.currPos.copy(p);
     this.prevPos.copy(p);
     this.renderPos.copy(p);
@@ -371,7 +381,7 @@ export class Game {
       this.ui.showGameOver(false);
       this.ui.showHint(true);
       this.ui.updateHud(0, this.falls, 0);
-      this.ui.setCheckpoints(level.checkpoints.map((cs) => cs / level.routeLength), -1);
+      this.ui.setCheckpoints(level.checkpoints.map((cp) => cp.route / level.routeLength), -1);
     }
   }
 
@@ -381,8 +391,9 @@ export class Game {
    */
   private respawnAtCheckpoint(): void {
     const level = this.level!;
-    const s = level.checkpoints[this.reachedCheckpoint];
-    this.placeBallAt(s);
+    const cp = level.checkpoints[this.reachedCheckpoint];
+    const s = cp.route;
+    this.placeBallAt(cp.s, cp.piece);
     if (this.mode === 'play') {
       this.ui.showGameOver(false);
       this.ui.updateHud(this.runTime, this.falls, s / level.routeLength);
@@ -404,14 +415,13 @@ export class Game {
   private checkCheckpoints(): void {
     const level = this.level!;
     const tracker = this.tracker!;
-    // Checkpoints are on the main route (gates on other pieces are not supported yet).
-    if (level.checkpoints.length === 0 || tracker.piece !== level || tracker.height < -0.8) return;
-    const k = passedCheckpoint(level.checkpoints, tracker.s, this.reachedCheckpoint);
+    if (level.checkpoints.length === 0 || tracker.height < -0.8) return;
+    const k = passedCheckpoint(level.checkpoints, tracker.piece, tracker.s, this.reachedCheckpoint);
     if (k === this.reachedCheckpoint) return;
     this.reachedCheckpoint = k;
     this.view?.setCheckpoint(k, this.elapsed);
     if (this.mode !== 'play') return;
-    this.ui.setCheckpoints(level.checkpoints.map((cs) => cs / level.routeLength), k);
+    this.ui.setCheckpoints(level.checkpoints.map((cp) => cp.route / level.routeLength), k);
     this.ui.flashCheckpoint();
     this.sound.checkpoint();
     haptics.checkpoint();
