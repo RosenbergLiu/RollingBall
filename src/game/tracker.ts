@@ -7,7 +7,8 @@ export interface Vec3Like {
   z: number;
 }
 
-interface Fix {
+/** Where a point is on a piece: the nearest sample, s along, u across, height above the surface. */
+export interface Fix {
   index: number;
   s: number;
   u: number;
@@ -57,7 +58,7 @@ export class PathTracker implements TrackState {
   }
 
   update(p: Vec3Like): void {
-    const fix = this.locate(this.piece, p, this.index);
+    const fix = locateOnPiece(this.piece, p, this.index, this.windowMeters);
     this.apply(this.piece, fix);
     if (this.level.pieces.length > 1 && !this.isOver(this.piece, fix)) this.findOtherPiece(p);
   }
@@ -97,67 +98,75 @@ export class PathTracker implements TrackState {
     let best: { piece: BuiltPiece; fix: Fix } | null = null;
     for (const piece of this.level.pieces) {
       if (piece === this.piece) continue;
-      const start = this.closestUnder(piece, p);
+      const start = closestUnder(piece, p);
       if (start < 0) continue;
-      const fix = this.locate(piece, p, start);
+      const fix = locateOnPiece(piece, p, start, this.windowMeters);
       if (!this.isOver(piece, fix)) continue;
       if (!best || fix.height < best.fix.height) best = { piece, fix };
     }
     if (best) this.apply(best.piece, best.fix);
   }
+}
 
-  /**
-   * A sample of `piece` the ball is horizontally close to and above (or -1): a coarse scan,
-   * so that where a piece passes over itself the loop right under the ball is picked.
-   */
-  private closestUnder(piece: BuiltPiece, p: Vec3Like): number {
-    const { samples } = piece.path;
-    const reach = piece.maxWidth / 2 + 1;
-    let best = -1;
-    let bestDy = Infinity;
-    for (let k = 0; k < samples.length; k += 2) {
-      const q = samples[k].pos;
-      const dx = p.x - q.x;
-      const dz = p.z - q.z;
-      if (dx * dx + dz * dz > reach * reach) continue;
-      const dy = p.y - q.y;
-      if (dy < BELOW || dy > ABOVE + 1) continue;
-      if (dy < bestDy) {
-        bestDy = dy;
-        best = k;
-      }
+/**
+ * A sample of `piece` the point is horizontally close to and above (or -1): a coarse scan,
+ * so that where a piece passes over itself the loop right under the point is picked.
+ */
+export function closestUnder(piece: BuiltPiece, p: Vec3Like): number {
+  const { samples } = piece.path;
+  const reach = piece.maxWidth / 2 + 1;
+  let best = -1;
+  let bestDy = Infinity;
+  for (let k = 0; k < samples.length; k += 2) {
+    const q = samples[k].pos;
+    const dx = p.x - q.x;
+    const dz = p.z - q.z;
+    if (dx * dx + dz * dz > reach * reach) continue;
+    const dy = p.y - q.y;
+    if (dy < BELOW || dy > ABOVE + 1) continue;
+    if (dy < bestDy) {
+      bestDy = dy;
+      best = k;
     }
-    return best;
   }
+  return best;
+}
 
-  /** Nearest sample on `piece` within the search window around `around`, and the ball's s, u, height there. */
-  private locate(piece: BuiltPiece, p: Vec3Like, around: number): Fix {
-    const { samples, ds } = piece.path;
-    const win = Math.ceil(this.windowMeters / ds);
-    const lo = Math.max(0, around - win);
-    const hi = Math.min(samples.length - 1, around + win);
-    let best = around;
-    let bestD = Infinity;
-    for (let k = lo; k <= hi; k++) {
-      const q = samples[k].pos;
-      const dx = p.x - q.x;
-      const dz = p.z - q.z;
-      const d = dx * dx + dz * dz;
-      if (d < bestD) {
-        bestD = d;
-        best = k;
-      }
+/** Nearest sample on `piece` within `windowMeters` of sample `around`, and the point's s, u, height there. */
+export function locateOnPiece(piece: BuiltPiece, p: Vec3Like, around: number, windowMeters = 8): Fix {
+  const { samples, ds } = piece.path;
+  const win = Math.ceil(windowMeters / ds);
+  const lo = Math.max(0, around - win);
+  const hi = Math.min(samples.length - 1, around + win);
+  let best = around;
+  let bestD = Infinity;
+  for (let k = lo; k <= hi; k++) {
+    const q = samples[k].pos;
+    const dx = p.x - q.x;
+    const dz = p.z - q.z;
+    const d = dx * dx + dz * dz;
+    if (d < bestD) {
+      bestD = d;
+      best = k;
     }
-    const smp = samples[best];
-    const rx = p.x - smp.pos.x;
-    const ry = p.y - smp.pos.y;
-    const rz = p.z - smp.pos.z;
-    const th = Math.hypot(smp.tan.x, smp.tan.z) || 1;
-    return {
-      index: best,
-      u: rx * smp.right.x + rz * smp.right.z,
-      height: rx * smp.normal.x + ry * smp.normal.y + rz * smp.normal.z,
-      s: best * ds + (rx * smp.tan.x + rz * smp.tan.z) / th,
-    };
   }
+  const smp = samples[best];
+  const rx = p.x - smp.pos.x;
+  const ry = p.y - smp.pos.y;
+  const rz = p.z - smp.pos.z;
+  const th = Math.hypot(smp.tan.x, smp.tan.z) || 1;
+  return {
+    index: best,
+    u: rx * smp.right.x + rz * smp.right.z,
+    height: rx * smp.normal.x + ry * smp.normal.y + rz * smp.normal.z,
+    s: best * ds + (rx * smp.tan.x + rz * smp.tan.z) / th,
+  };
+}
+
+/** Is the point on (or within `tolerance` of) the top surface of `piece`, inside its edges by `inset`? */
+export function onPieceSurface(piece: BuiltPiece, p: Vec3Like, inset = 0, tolerance = 0.05): boolean {
+  const start = closestUnder(piece, { x: p.x, y: p.y + tolerance, z: p.z });
+  if (start < 0) return false;
+  const f = locateOnPiece(piece, p, start);
+  return f.s >= 0 && f.s <= piece.path.length && Math.abs(f.u) <= piece.widthAt(f.s) / 2 - inset && Math.abs(f.height) <= tolerance;
 }

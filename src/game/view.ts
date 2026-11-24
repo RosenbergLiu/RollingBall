@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { lips } from './drops';
-import type { BuiltLevel, Theme } from './level';
+import type { BuiltLevel, BuiltPiece, Theme } from './level';
 import { pathAt } from './path';
 import { buildStrip, type MeshArrays, type PlatformMesh } from './platform';
+import { onPieceSurface } from './tracker';
 import { PHYSICS } from './physics';
 
 export function toGeometry(m: MeshArrays): THREE.BufferGeometry {
@@ -236,6 +237,23 @@ interface GateView {
 /** How long a checkpoint gate flashes when the ball rolls through it (s). */
 const GATE_FLASH = 0.8;
 
+/** The rim quads (4 vertices, 6 indices each) whose middle is not on any of `others`' surfaces. */
+function rimOutside(rim: MeshArrays, others: BuiltPiece[]): MeshArrays {
+  const indices: number[] = [];
+  const p = { x: 0, y: 0, z: 0 };
+  for (let i = 0; i < rim.indices.length; i += 6) {
+    const quad = rim.indices.slice(i, i + 6);
+    p.x = p.y = p.z = 0;
+    for (const k of quad) {
+      p.x += rim.positions[k * 3] / 6;
+      p.y += rim.positions[k * 3 + 1] / 6;
+      p.z += rim.positions[k * 3 + 2] / 6;
+    }
+    if (!others.some((o) => onPieceSurface(o, p, 0.02, 0.06))) indices.push(...quad);
+  }
+  return { ...rim, indices };
+}
+
 export class LevelView {
   readonly group = new THREE.Group();
   private readonly bannerMat: THREE.MeshBasicMaterial;
@@ -250,17 +268,29 @@ export class LevelView {
     const sideMat = new THREE.MeshStandardMaterial({ color: theme.side, roughness: 0.8, metalness: 0.15 });
     const rimMat = new THREE.MeshBasicMaterial({ color: theme.rim, toneMapped: false });
 
-    for (const platform of platforms) {
-      const top = new THREE.Mesh(toGeometry(platform.top), topMat);
+    // Where pieces overlap (a fork's junctions), the extra pieces' tops are drawn just behind
+    // the main route's (no flicker), and edge glow lying on another piece's surface is dropped.
+    const extraTopMat = topMat.clone();
+    extraTopMat.polygonOffset = true;
+    extraTopMat.polygonOffsetFactor = 1;
+    extraTopMat.polygonOffsetUnits = 1;
+    platforms.forEach((platform, i) => {
+      const piece = level.pieces[i];
+      const others = level.pieces.filter(
+        (o) =>
+          o !== piece &&
+          (o.attach?.piece === piece.id || o.merge?.piece === piece.id || piece.attach?.piece === o.id || piece.merge?.piece === o.id),
+      );
+      const top = new THREE.Mesh(toGeometry(platform.top), i === 0 ? topMat : extraTopMat);
       top.receiveShadow = true;
       top.castShadow = true;
       const walls = new THREE.Mesh(toGeometry(platform.walls), sideMat);
       walls.receiveShadow = true;
       walls.castShadow = true;
       const bottom = new THREE.Mesh(toGeometry(platform.bottom), sideMat);
-      const rim = new THREE.Mesh(toGeometry(platform.rim), rimMat);
+      const rim = new THREE.Mesh(toGeometry(others.length > 0 ? rimOutside(platform.rim, others) : platform.rim), rimMat);
       this.group.add(top, walls, bottom, rim);
-    }
+    });
 
     // Finish line (on the piece that has it): checkered strip on the surface plus a gate with a banner.
     const fp = level.finish;

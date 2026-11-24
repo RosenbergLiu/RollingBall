@@ -1,6 +1,7 @@
 import { Vector3 } from 'three';
-import { holeDistance, type BuiltHole, type BuiltPiece } from './level';
+import { holeDistance, type BuiltHole, type BuiltLevel, type BuiltPiece } from './level';
 import { pathAt } from './path';
+import { onPieceSurface } from './tracker';
 
 export interface MeshArrays {
   positions: number[];
@@ -34,6 +35,45 @@ export function mergeColliders(meshes: ColliderMesh[]): ColliderMesh {
     i += m.indices.length;
   }
   return { vertices, indices };
+}
+
+/**
+ * The physics colliders for a whole level: every piece's top surface merged into one mesh
+ * and their walls into another. Where two pieces overlap (a fork's junctions) a wall whose
+ * top edge runs across the other piece's surface is left out: the ball would catch on it.
+ */
+export function levelColliders(level: BuiltLevel, platforms: PlatformMesh[]): { top: ColliderMesh; walls: ColliderMesh } {
+  const walls = platforms.map((platform, i) => {
+    const piece = level.pieces[i];
+    const others = level.pieces.filter(
+      (o) =>
+        o !== piece &&
+        (o.attach?.piece === piece.id || o.merge?.piece === piece.id || piece.attach?.piece === o.id || piece.merge?.piece === o.id),
+    );
+    return others.length === 0 ? platform.wallCollider : wallsOutside(platform.wallCollider, others);
+  });
+  return { top: mergeColliders(platforms.map((p) => p.topCollider)), walls: mergeColliders(walls) };
+}
+
+/** The wall triangles none of whose corners lies on one of `others`' top surfaces. */
+function wallsOutside(m: ColliderMesh, others: BuiltPiece[]): ColliderMesh {
+  const v = m.vertices;
+  const p = { x: 0, y: 0, z: 0 };
+  const onOther = new Uint8Array(v.length / 3);
+  for (let k = 0; k < onOther.length; k++) {
+    p.x = v[k * 3];
+    p.y = v[k * 3 + 1];
+    p.z = v[k * 3 + 2];
+    onOther[k] = others.some((o) => onPieceSurface(o, p, 0.02, 0.03)) ? 1 : 0;
+  }
+  const kept: number[] = [];
+  for (let i = 0; i < m.indices.length; i += 3) {
+    const a = m.indices[i];
+    const b = m.indices[i + 1];
+    const c = m.indices[i + 2];
+    if (!onOther[a] && !onOther[b] && !onOther[c]) kept.push(a, b, c);
+  }
+  return { vertices: v, indices: Uint32Array.from(kept) };
 }
 
 export interface PlatformMesh {

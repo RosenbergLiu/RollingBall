@@ -2,6 +2,7 @@ import { coinLine, coinRow, coinSpots, type CoinSpot } from './coins';
 import type { LevelDef } from './level';
 import { left, right, straight } from './path';
 import { dropTo } from './drops';
+import { forkBranch, swing } from './forks';
 import { boostPad, musicTiles } from './surfaces';
 
 /** Coin spots on a ring of `radius` around (s, u), at the given angles (0° = straight ahead, 90° = right). */
@@ -613,6 +614,61 @@ export const LEVELS: LevelDef[] = [
       rim: '#ecfeff',
       skyTop: '#082f49',
       horizon: '#60a5fa',
+    },
+  },  {
+    // Choice. Hook: a real fork. After a wide, flat fork area the route splits: the right way
+    // (the main route) is a coin trail, the left way (a branch) plays music keys. They run
+    // 10 m apart and meet again, then a run home. Both ways are the same length.
+    id: 13,
+    name: 'Two Paths',
+    tagline: 'Left or right? Both ways meet again.',
+    grade: 0.05,
+    segments: [
+      straight(12, 0.05),
+      straight(6, 0),
+      ...swing('right', 9, 14, 8, 0.06),
+      straight(8, 0),
+      straight(16, 0.06),
+    ],
+    width: [
+      [0, 8],
+      [10, 10],
+      [24, 8],
+      [70, 8],
+      [78, 10],
+      [96, 9],
+    ],
+    coins: [
+      ...coinRow(3, 4, 2.5),
+      // Both ways shown at the fork.
+      ...coinSpots([
+        [13, -2.5],
+        [13, 2.5],
+        [15.5, -3.5],
+        [15.5, 3.5],
+      ]),
+      ...coinRow(32, 8, 3),
+      ...coinRow(76, 3, 2.5),
+      ...coinLine(84, -2, 92, 2, 3),
+    ],
+    pieces: [
+      forkBranch(
+        'left',
+        { at: 18, side: 'left', offset: 9, radius: 14, middle: 8, grade: 0.06 },
+        {
+          width: [[0, 8]],
+          coins: [...coinRow(14, 3, 3), ...coinRow(38, 3, 3)],
+          surfaces: musicTiles(23.5, 2, ['C5', 'E5', 'G5', 'C6']),
+        },
+      ),
+    ],
+    theme: {
+      tileA: '#be123c',
+      tileB: '#fecdd3',
+      side: '#4c0519',
+      rim: '#fff1f2',
+      skyTop: '#1a0b14',
+      horizon: '#f59e0b',
     },
   },
 ];

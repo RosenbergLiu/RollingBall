@@ -1,7 +1,7 @@
 import { holeDistance, type BuiltLevel, type BuiltPiece } from './level';
 import { pathAt } from './path';
 import { PHYSICS, type Vec3 } from './physics';
-import type { PathTracker, Vec3Like } from './tracker';
+import { locateOnPiece, type PathTracker, type Vec3Like } from './tracker';
 
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 
@@ -12,8 +12,24 @@ const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 export class Autopilot {
   cruiseSpeed = 8;
 
+  /**
+   * Fork branches to take (piece ids); at every other fork it stays on its way. The tests
+   * use this to drive down each branch.
+   */
+  route = new Set<string>();
+
   /** The level it drives on (it steers on whichever of its pieces the ball is on). */
   constructor(readonly level: BuiltLevel) {}
+
+  /** A branch on the route that leaves `piece` right around `s` (the ball is at its fork). */
+  private branchAt(piece: BuiltPiece, s: number): BuiltPiece | null {
+    if (this.route.size === 0) return null;
+    return (
+      this.level.pieces.find(
+        (b) => this.route.has(b.id) && b.merge && b.attach?.piece === piece.id && s >= b.attach.s - 1 && s <= b.attach.s + 15,
+      ) ?? null
+    );
+  }
 
   /** How dangerous it is for the ball center to be at (s, u) on a piece. */
   private danger(piece: BuiltPiece, s: number, u: number): number {
@@ -29,12 +45,21 @@ export class Autopilot {
   }
 
   compute(tracker: PathTracker, pos: Vec3Like, vel: Vec3Like, out: Vec3): Vec3 {
-    // Drive on whichever piece the ball is on (a drop moves it to the piece below).
-    const L = tracker.piece;
+    // Drive on whichever piece the ball is on (a drop moves it to the piece below). At a
+    // fork whose branch is on the route, steer along the branch already: the tracker moves
+    // to it once the ball leaves the other way's track.
+    let L = tracker.piece;
+    let s0 = tracker.s;
+    let u0 = tracker.u;
+    const branch = this.branchAt(L, s0);
+    if (branch) {
+      const f = locateOnPiece(branch, pos, Math.max(0, Math.round((s0 - branch.attach!.s) / branch.path.ds)));
+      L = branch;
+      s0 = f.s;
+      u0 = f.u;
+    }
     const speed = Math.hypot(vel.x, vel.z);
     const look = clamp(2.5 + speed * 0.4, 3, 7);
-    const s0 = tracker.s;
-    const u0 = tracker.u;
     const sT = Math.min(s0 + look, L.path.length);
     const half = Math.max(0, L.widthAt(sT) / 2 - 0.8);
 

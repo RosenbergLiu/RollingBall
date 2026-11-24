@@ -58,6 +58,11 @@ export interface PieceDef {
   surfaces?: Surface[];
   /** This piece holds the finish line (and the run-out) instead of the main route. */
   finish?: boolean;
+  /**
+   * Where this piece's end rejoins another piece (a fork's branch merging back): that piece
+   * and the authored s there. The end must line up with it (see forkProblems in forks.ts).
+   */
+  to?: { piece: string; s: number };
 }
 
 /** The id of a level's own route (its `segments`, `width`, …). */
@@ -172,6 +177,8 @@ export interface BuiltPiece {
   finishLine: number | null;
   /** The piece this one starts from and the absolute s there (null for the main route). */
   attach: { piece: string; s: number } | null;
+  /** The piece this one's end rejoins and the absolute s there (null: it doesn't merge). */
+  merge: { piece: string; s: number } | null;
 }
 
 /**
@@ -260,6 +267,7 @@ function buildPiece(
   heading: number,
   routeStart: number,
   attach: { piece: string; s: number } | null,
+  merge: { piece: string; s: number } | null = null,
 ): BuiltPiece {
   const offset = src.entrance ? ENTRANCE_LENGTH : 0;
   const segs = [
@@ -301,6 +309,7 @@ function buildPiece(
     routeStart,
     finishLine: src.runout ? path.length - RUNOUT_LENGTH + 1.5 : null,
     attach,
+    merge,
   };
 }
 
@@ -330,6 +339,7 @@ export function buildLevel(def: LevelDef): BuiltLevel {
         heading,
         parent.routeStart + sAbs,
         { piece: parent.id, s: sAbs },
+        mergeRef(pieces, p),
       ),
     );
   }
@@ -346,6 +356,13 @@ export function buildLevel(def: LevelDef): BuiltLevel {
   // Falling far below every piece also ends a run (see hasFallen).
   level.minY = Math.min(...pieces.map((q) => q.minY));
   return level;
+}
+
+/** A piece's `to` as an absolute s on an already built piece (null if none or unknown). */
+function mergeRef(built: BuiltPiece[], p: PieceDef): { piece: string; s: number } | null {
+  if (!p.to) return null;
+  const target = built.find((q) => q.id === p.to!.piece);
+  return target ? { piece: target.id, s: p.to.s + target.offset } : null;
 }
 
 /** How far along the whole route a tracked ball is, 0..1 (pieces count from where they start). */
@@ -370,6 +387,13 @@ export function pieceProblems(def: LevelDef): string[] {
     else if (p.from.s < 0 || p.from.s > parentLength + ATTACH_OVERRUN) {
       problems.push(`${where} starts at s ${p.from.s}, outside "${p.from.piece}" (0 to ${(parentLength + ATTACH_OVERRUN).toFixed(1)})`);
     }
+    if (p.to) {
+      const targetLength = known.get(p.to.piece);
+      if (targetLength === undefined) problems.push(`${where} merges into "${p.to.piece}", which is not 'main' or an earlier piece`);
+      else if (p.to.s < 0 || p.to.s > targetLength) problems.push(`${where} merges at s ${p.to.s}, outside "${p.to.piece}"`);
+      if (p.to.piece === p.from.piece && p.to.s <= p.from.s) problems.push(`${where} merges back before where it starts`);
+      if (p.finish) problems.push(`${where} both merges and has the finish`);
+    }
     if (p.segments.length === 0) problems.push(`${where} has no segments`);
     if (p.width.length === 0) problems.push(`${where} has no width`);
     if (!known.has(p.id)) known.set(p.id, p.segments.reduce((sum, seg) => sum + segmentLength(seg), 0));
@@ -379,8 +403,12 @@ export function pieceProblems(def: LevelDef): string[] {
 
 /** Where the track passes over itself (or one piece over another), the surfaces are at least this far apart. */
 export const MIN_OVERPASS_GAP = 8;
-/** Around the point where a piece starts from another, the two may overlap on purpose (a drop's landing under its lip). */
-const ATTACH_ZONE = 10;
+/**
+ * Around the point where a piece starts from another (a drop's landing under its lip, a fork)
+ * and where it merges back, the two may overlap on purpose: drops and forks check those
+ * junctions with their own rules.
+ */
+const JOIN_ZONE = 15;
 
 /**
  * Every place where two parts of the track overlap seen from above with less than
@@ -420,7 +448,8 @@ export function overlapProblems(level: BuiltLevel): string[] {
     return false;
   };
   const nearStart = (child: BuiltPiece, cs: number, parent: BuiltPiece, ps: number) =>
-    child.attach?.piece === parent.id && cs < ATTACH_ZONE && Math.abs(ps - child.attach.s) < ATTACH_ZONE;
+    (child.attach?.piece === parent.id && cs < JOIN_ZONE && Math.abs(ps - child.attach.s) < JOIN_ZONE) ||
+    (child.merge?.piece === parent.id && cs > child.path.length - JOIN_ZONE && Math.abs(ps - child.merge.s) < JOIN_ZONE);
   const seen = new Set<string>();
   for (let i = 0; i < pts.length; i++) {
     for (let j = i + 1; j < pts.length; j++) {

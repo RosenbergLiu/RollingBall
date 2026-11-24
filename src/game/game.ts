@@ -8,7 +8,7 @@ import { Controls } from './input';
 import { BALL_RADIUS, buildLevel, hasFallen, hasFinished, passedCheckpoint, routeProgress, spawnPoint, type BuiltLevel } from './level';
 import { LEVELS } from './levels';
 import { PhysicsWorld, PHYSICS, type Vec3 } from './physics';
-import { buildPlatform, mergeColliders } from './platform';
+import { buildPlatform, levelColliders } from './platform';
 import { isUnlocked, nextPlayableLevel, recordCompletion, type ProgressData } from './progress';
 import type { Settings } from './settings';
 import { contactFactor, Sound } from './sound';
@@ -242,10 +242,8 @@ export class Game {
     const level = buildLevel(def);
     // One platform per track piece; physics gets them merged into one top and one set of walls.
     const platforms = level.pieces.map((piece) => buildPlatform(piece));
-    this.physics.setPlatform(
-      mergeColliders(platforms.map((p) => p.topCollider)),
-      mergeColliders(platforms.map((p) => p.wallCollider)),
-    );
+    const colliders = levelColliders(level, platforms);
+    this.physics.setPlatform(colliders.top, colliders.walls);
     this.view = new LevelView(level, platforms);
     this.scene.add(this.view.group);
     this.surfaceView = new SurfaceView(level);

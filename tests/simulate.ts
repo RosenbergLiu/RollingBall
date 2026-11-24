@@ -1,7 +1,7 @@
 import { Autopilot } from '../src/game/autopilot';
 import { buildLevel, hasFallen, hasFinished, spawnPoint, type LevelDef } from '../src/game/level';
 import { PhysicsWorld, PHYSICS, type Vec3 } from '../src/game/physics';
-import { buildPlatform, mergeColliders } from '../src/game/platform';
+import { buildPlatform, levelColliders } from '../src/game/platform';
 import { applySurfaces, SurfaceContact } from '../src/game/surfaces';
 import { PathTracker } from '../src/game/tracker';
 
@@ -25,14 +25,20 @@ export type Controller = (ctx: { tracker: PathTracker; pos: Vec3; vel: Vec3; out
 /**
  * Runs a level headlessly with the real physics and rules. Defaults to the autopilot.
  * `startS` (absolute s) starts the ball at rest there instead of the entrance, e.g. at a checkpoint.
+ * `route` lists fork branches the autopilot takes.
  */
-export function simulate(def: LevelDef, opts: { maxTime?: number; controller?: Controller; startS?: number } = {}): SimResult {
+export function simulate(
+  def: LevelDef,
+  opts: { maxTime?: number; controller?: Controller; startS?: number; route?: string[] } = {},
+): SimResult {
   const level = buildLevel(def);
   const platforms = level.pieces.map((piece) => buildPlatform(piece));
   const physics = new PhysicsWorld();
-  physics.setPlatform(mergeColliders(platforms.map((p) => p.topCollider)), mergeColliders(platforms.map((p) => p.wallCollider)));
+  const colliders = levelColliders(level, platforms);
+  physics.setPlatform(colliders.top, colliders.walls);
   const tracker = new PathTracker(level);
   const pilot = new Autopilot(level);
+  for (const id of opts.route ?? []) pilot.route.add(id);
   const startS = opts.startS ?? level.spawnS;
   physics.placeBall(spawnPoint(level, startS));
   tracker.reset(startS);

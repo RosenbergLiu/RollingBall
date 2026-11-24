@@ -366,7 +366,7 @@ unless the §7 feature you need already exists in the engine.
    - slopes follow §4: at most 0.2 either way, smooth changes, no climbing in the first 12 m
    - where the route passes over itself, the surfaces are at least 8 m apart
    - checkpoints follow §7.10, and the autopilot can finish the level from each of them
-   - track pieces follow §3 (valid ids and starts), drops follow §7.2
+   - track pieces follow §3 (valid ids, starts and merges), drops follow §7.2, forks §7.1
    - surface tiles follow §7.3: inside the platform, clear of holes, not overlapping; music
      keys at least 1.2 m long; boost pads on straights with a clear, calm 15 m after them
    - the shape differs from all other levels
@@ -390,18 +390,28 @@ These ideas need new code. They are written as **proposals**: design with them o
 the feature exists. Implementing one is a separate task, which should ask the owner and
 come with tests. Each one says what it adds, the design rules, and a draft data format.
 
-### 7.1 Real forks and merges: route graphs
+### 7.1 Real forks and merges: route graphs ✅ built
 **Fresh because:** real choice. A scenic long way and a quick narrow way, or two
 completely different mini-adventures that meet again.
 
-Format: built on track pieces (§3). A branch is a piece that starts from the main route
-(`from: { piece: 'main', s: 30, u: -4, turn: 20 }`); a merge will need a "rejoins at" link.
+Format: built on track pieces (§3). A branch is a piece that starts from the main route and
+whose end rejoins it (`to`). The helpers in `src/game/forks.ts` build the usual shape, two
+mirror-image "swings" that split and meet again:
 ```ts
+segments: [straight(12, 0.05), straight(6, 0),            // flat approach: the fork area
+           ...swing('right', 9, 14, 8, 0.06),              // the main route's way
+           straight(8, 0), straight(16, 0.06)],            // flat after the merge, then home
 pieces: [
-  { id: 'scenic', from: { piece: 'main', s: 30, u: -4, turn: 20 },
-    segments: [...], width: [...] },   // merging back into 'main' is still to build
+  forkBranch('left', { at: 18, side: 'left', offset: 9, radius: 14, middle: 8, grade: 0.06 },
+    { width: [[0, 8]], coins: [...], surfaces: [...] }),   // the other way; `to` is set for you
 ],
 ```
+`swing(side, offset, radius, middle, grade)` bends out by `offset`, runs `middle` meters and
+bends back onto the same line. Its first and last bends are flat: that is where the two
+tracks overlap, and the physics engine only smooths seams inside one mesh, so overlapping
+surfaces must be exactly level (otherwise the ball bumps). Give each side an `offset` of at
+least the track width, so the two ways have separated before the slope starts.
+Example: level 13, Two Paths.
 Design rules:
 
 - **Fork area:** at least 10 m wide and flat (grade ≤ 0.04), visible from 15 m away.
@@ -413,14 +423,20 @@ Design rules:
 - **No dead ends,** and no branch that leads back to an earlier point. Every branch moves
   toward the finish.
 
-Engine notes:
+Built (checked by `forkProblems()`):
 
-- ✅ Built with track pieces: a platform for each piece (merged into one collider), the
-  tracker follows the piece under the ball, the camera's heading comes from the current
-  piece, and the progress bar counts route distance (`routeProgress()`).
-- To build: merges (a piece rejoining another on a junction pad, with seam-free collision),
-  the fork and merge design rules above, and a route choice for the autopilot so the tests
-  cover both branches.
+- The branch's end lines up with the track it rejoins (within 0.2 m, 2 cm and 3°).
+- Where the two tracks overlap they are level within 5 mm (no seam to bump on); walls whose
+  top edge runs across the other track are left out of the physics, and the overlapping edge
+  glow is not drawn.
+- The track is at least 6 m wide where the branch leaves and rejoins; no holes within 15 m
+  of a junction.
+- The branch is within 1.3× the length of the way it bypasses, and the two ways really
+  separate (at least 2 m of open gap at the middle).
+- No dead ends: every piece but the finish rejoins another or ends in a drop.
+- The tracker follows the piece under the ball, the camera turns with it, and the progress
+  bar counts route distance. The autopilot takes the branches in its `route` (the tests drive
+  both ways, at speed, and check the ball never lifts off at a junction).
 
 ### 7.2 Drops: falling onto a new platform on purpose ✅ built
 **Fresh because:** a moment of "whoa!" with no risk. The ball sails off a lip and lands on
@@ -673,7 +689,7 @@ gently). The showcase is a good place for the world's one checkpointed adventure
 **Existing levels (don't duplicate the hook).** World 1 teaches one basic each, from
 concepts A, D, E, C, U and G above plus a tutorial and a slalom, and ends with S (Grand
 Tour), its checkpointed showcase. Levels 10 and 11 start the surface tiles (J and a boost
-level), and 12 the drops (H). Concepts still free: B, F, I, K–R, T, V, W.
+level), 12 the drops (H) and 13 the forks (I). Concepts still free: B, F, K–R, T, V, W.
 
 | # | Name | Hook | Feeling |
 |---|---|---|---|
@@ -689,6 +705,7 @@ level), and 12 the drops (H). Concepts still free: B, F, I, K–R, T, V, W.
 | 10 | Musical Bridge | Music tiles: a rising scale, a three-lane song bridge, a curve that climbs the scale | Play |
 | 11 | Zoom Zoom | Boost arrows: on the flat, before a hill, in one lane of two, into the finish | Rush |
 | 12 | Waterfall Steps | Drops of 1.5, 2.5 and 3.5 m onto wider steps below, each step bending a little | Surprise |
+| 13 | Two Paths | A fork: the right way is a coin trail, the left way plays music keys; they meet again | Choice |
 
 ---
 
