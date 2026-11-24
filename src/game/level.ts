@@ -1,5 +1,6 @@
 import { Vector3 } from 'three';
 import type { CoinSpot } from './coins';
+import type { BuiltSurface, Surface } from './surfaces';
 import { buildPath, pathAt, segmentLength, straight, type PathData, type Segment } from './path';
 
 export interface Hole {
@@ -40,6 +41,8 @@ export interface LevelDef {
    * "adventure" levels; see checkpointProblems() and docs/level-design-guide.md §7.10.
    */
   checkpoints?: number[];
+  /** Special surface tiles: boost arrows, music tiles (see src/game/surfaces.ts, guide §7.3). */
+  surfaces?: Surface[];
   theme: Theme;
 }
 
@@ -98,6 +101,8 @@ export interface BuiltLevel {
   coinSpots: CoinSpot[];
   /** Checkpoint gates with absolute s, in order. */
   checkpoints: number[];
+  /** Surface tiles with absolute s, sorted by s0. */
+  surfaces: BuiltSurface[];
   spawnS: number;
   finishS: number;
   maxWidth: number;
@@ -145,6 +150,10 @@ export function buildLevel(def: LevelDef): BuiltLevel {
     holes,
     coinSpots: (def.coins ?? []).map((c) => ({ s: c.s + ENTRANCE_LENGTH, u: c.u })),
     checkpoints: (def.checkpoints ?? []).map((s) => s + ENTRANCE_LENGTH),
+    surfaces: (def.surfaces ?? [])
+      .map((x) => ({ type: x.type, s0: x.s0 + ENTRANCE_LENGTH, s1: x.s1 + ENTRANCE_LENGTH, u0: x.u0, u1: x.u1, note: x.note ?? 0, index: 0 }))
+      .sort((a, b) => a.s0 - b.s0)
+      .map((x, index) => ({ ...x, index })),
     spawnS: SPAWN_S,
     finishS: path.length - RUNOUT_LENGTH + 1.5,
     maxWidth,
@@ -177,7 +186,7 @@ export const CHECKPOINT_RULES = {
 };
 
 /** The authored segment at authored distance `s`, with its grade. */
-function segmentAt(def: LevelDef, s: number): { seg: Segment; grade: number } | null {
+export function segmentAt(def: LevelDef, s: number): { seg: Segment; grade: number } | null {
   let start = 0;
   for (const seg of def.segments) {
     const end = start + segmentLength(seg);

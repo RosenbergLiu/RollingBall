@@ -2,6 +2,7 @@ import { Autopilot } from '../src/game/autopilot';
 import { buildLevel, hasFallen, hasFinished, spawnPoint, type LevelDef } from '../src/game/level';
 import { PhysicsWorld, PHYSICS, type Vec3 } from '../src/game/physics';
 import { buildPlatform } from '../src/game/platform';
+import { applySurfaces, SurfaceContact } from '../src/game/surfaces';
 import { PathTracker } from '../src/game/tracker';
 
 export interface SimResult {
@@ -10,6 +11,10 @@ export interface SimResult {
   s: number;
   finishS: number;
   maxSpeed: number;
+  /** Music tile notes the ball rolled onto, in order. */
+  notes: number[];
+  /** How many times the ball rolled onto boost arrows. */
+  boosts: number;
 }
 
 export type Controller = (ctx: { tracker: PathTracker; pos: Vec3; vel: Vec3; out: Vec3; t: number }) => void;
@@ -31,6 +36,9 @@ export function simulate(def: LevelDef, opts: { maxTime?: number; controller?: C
   const accel: Vec3 = { x: 0, y: 0, z: 0 };
   const maxTime = opts.maxTime ?? 120;
   let maxSpeed = 0;
+  const contact = new SurfaceContact();
+  const notes: number[] = [];
+  let boosts = 0;
   let outcome: SimResult['outcome'] = 'timeout';
   let t = 0;
   try {
@@ -39,6 +47,9 @@ export function simulate(def: LevelDef, opts: { maxTime?: number; controller?: C
       const vel = physics.ball.linvel();
       if (opts.controller) opts.controller({ tracker, pos, vel, out: accel, t });
       else pilot.compute(tracker, pos, vel, accel);
+      const entered = applySurfaces(level, tracker, contact, accel);
+      if (entered?.type === 'music') notes.push(entered.note);
+      if (entered?.type === 'boost') boosts++;
       physics.setAcceleration(accel);
       physics.step();
       const p = physics.ball.translation();
@@ -54,7 +65,7 @@ export function simulate(def: LevelDef, opts: { maxTime?: number; controller?: C
         break;
       }
     }
-    return { outcome, time: t, s: tracker.s, finishS: level.finishS, maxSpeed };
+    return { outcome, time: t, s: tracker.s, finishS: level.finishS, maxSpeed, notes, boosts };
   } finally {
     physics.dispose();
   }

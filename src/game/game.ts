@@ -12,6 +12,8 @@ import { buildPlatform } from './platform';
 import { isUnlocked, nextPlayableLevel, recordCompletion, type ProgressData } from './progress';
 import type { Settings } from './settings';
 import { contactFactor, Sound } from './sound';
+import { applySurfaces, SurfaceContact, type BuiltSurface } from './surfaces';
+import { SurfaceView } from './surfaceView';
 import { saveProgress, saveSettings, saveWallet } from './storage';
 import { buildQualityLevels, QualityGovernor } from './quality';
 import { PathTracker } from './tracker';
@@ -66,6 +68,7 @@ export class Game {
 
   private level: BuiltLevel | null = null;
   private view: LevelView | null = null;
+  private surfaceView: SurfaceView | null = null;
   private tracker: PathTracker | null = null;
   private autopilot: Autopilot | null = null;
 
@@ -80,6 +83,8 @@ export class Game {
   private runTime = 0;
   private timerRunning = false;
   private falls = 0;
+  /** Which surface tile (boost, music) the ball is on. */
+  private readonly surfaceContact = new SurfaceContact();
   /** Index of the furthest checkpoint passed in this run (-1: none): a fall respawns there. */
   private reachedCheckpoint = -1;
   /** Debug aid: the autopilot plays in play mode (set from the console). */
@@ -218,6 +223,11 @@ export class Game {
       this.view.dispose();
     }
     this.view = null;
+    if (this.surfaceView) {
+      this.scene.remove(this.surfaceView.group);
+      this.surfaceView.dispose();
+    }
+    this.surfaceView = null;
     this.level = null;
     this.tracker = null;
     this.autopilot = null;
@@ -232,6 +242,8 @@ export class Game {
     this.physics.setPlatform(platform.topCollider, platform.wallCollider);
     this.view = new LevelView(level, platform);
     this.scene.add(this.view.group);
+    this.surfaceView = new SurfaceView(level);
+    this.scene.add(this.surfaceView.group);
     this.env.setTheme(def.theme);
     this.level = level;
     this.tracker = new PathTracker(level);
@@ -338,6 +350,7 @@ export class Game {
     this.phaseTime = 0;
     this.camFrozen = false;
     this.accumulator = 0;
+    this.surfaceContact.reset();
     this.updateCamera(0, true);
   }
 
@@ -368,6 +381,17 @@ export class Game {
     if (this.mode === 'play') {
       this.ui.showGameOver(false);
       this.ui.updateHud(this.runTime, this.falls, s / level.finishS);
+    }
+  }
+
+  /** The ball rolled onto a surface tile: light it up and play its sound. */
+  private onSurface(x: BuiltSurface): void {
+    this.surfaceView?.hit(x, this.elapsed);
+    if (this.mode !== 'play') return;
+    if (x.type === 'music') this.sound.note(x.note);
+    else {
+      this.sound.boost();
+      haptics.tap();
     }
   }
 
@@ -480,6 +504,10 @@ export class Game {
     this.prevPos.copy(this.currPos);
     this.prevQuat.copy(this.currQuat);
     this.computeControl();
+    if (this.phase === 'rolling') {
+      const entered = applySurfaces(level, tracker, this.surfaceContact, this.accel);
+      if (entered) this.onSurface(entered);
+    }
     this.physics.setAcceleration(this.accel);
     this.physics.step();
     const t = this.physics.ball.translation();
@@ -547,6 +575,7 @@ export class Game {
     if (!this.paused) this.updateCamera(dt);
     this.env.follow(this.renderPos, this.camera);
     this.view?.update(this.elapsed);
+    this.surfaceView?.update(this.elapsed);
     this.coinField?.update(this.elapsed);
     if (this.mode === 'play' && this.level && this.tracker) {
       this.ui.updateHud(this.runTime, this.falls, this.tracker.s / this.level.finishS);

@@ -1,6 +1,7 @@
 import { coinLine, coinRow, coinSpots, type CoinSpot } from './coins';
 import type { LevelDef } from './level';
 import { left, right, straight } from './path';
+import { boostPad, musicTiles } from './surfaces';
 
 /** Coin spots on a ring of `radius` around (s, u), at the given angles (0° = straight ahead, 90° = right). */
 const coinRing = (s: number, u: number, radius: number, degrees: number[]): CoinSpot[] =>
@@ -467,6 +468,89 @@ export const LEVELS: LevelDef[] = [
       rim: '#fef3c7',
       skyTop: '#120a2e',
       horizon: '#6d8fd6',
+    },
+  },  {
+    // Play. Hook: music tiles. Every colored tile plays a note when the ball rolls onto it.
+    // Meet: five big keys across the whole track. Play: three lanes; the middle one (the
+    // coin line) plays "Twinkle Twinkle Little Star", the side lanes play it an octave lower.
+    // Twist: a curve of short keys climbing a scale as the ball speeds up. Celebrate: a ta-da.
+    id: 10,
+    name: 'Musical Bridge',
+    tagline: 'Every tile plays a note. Can you find the song?',
+    grade: 0.04,
+    segments: [
+      straight(10, 0.04),
+      straight(16, 0.03),
+      straight(32, 0.03),
+      left(60, 20, 0.04),
+      straight(10, 0.02),
+      straight(14, 0.06),
+    ],
+    width: [[0, 9.4]],
+    surfaces: [
+      ...musicTiles(12, 2.6, ['C5', 'D5', 'E5', 'G5', 'A5']),
+      ...musicTiles(29, 2, ['C5', 'C5', 'G5', 'G5', 'A5', 'A5', 'G5', 'F5', 'F5', 'E5', 'E5', 'D5', 'D5', 'C5'], -1.4, 1.4),
+      ...musicTiles(29, 2, ['C4', 'C4', 'G4', 'G4', 'A4', 'A4', 'G4', 'F4', 'F4', 'E4', 'E4', 'D4', 'D4', 'C4'], -4.2, -1.5),
+      ...musicTiles(29, 2, ['C4', 'C4', 'G4', 'G4', 'A4', 'A4', 'G4', 'F4', 'F4', 'E4', 'E4', 'D4', 'D4', 'C4'], 1.5, 4.2),
+      ...musicTiles(60, 1.5, ['C5', 'D5', 'E5', 'G5', 'A5', 'C6', 'D6', 'E6', 'G6', 'A6', 'C7']),
+      ...musicTiles(89.5, 3, ['C5', 'E5', 'G5', 'C6']),
+    ],
+    coins: [
+      ...coinRow(3, 3, 2.5),
+      ...coinRow(13.3, 5, 2.6),
+      ...coinRow(30, 7, 4),
+      ...coinRow(61, 5, 3.4, -1.8),
+      ...coinRow(81, 3, 2.5),
+      ...coinRow(91, 4, 3),
+    ],
+    theme: {
+      tileA: '#1e1b4b',
+      tileB: '#4338ca',
+      side: '#0f0a2e',
+      rim: '#f0abfc',
+      skyTop: '#07051a',
+      horizon: '#3b3a7a',
+    },
+  },
+  {
+    // Rush. Hook: boost arrows. Meet: one pad on the flat (whoosh, then coast). Play: a pad
+    // right before a hill, so the ball flies up it. Twist: a choice of lanes, boost on the
+    // left or coins on the right, into a big sweeping bend. Celebrate: a boost to the finish.
+    id: 11,
+    name: 'Zoom Zoom',
+    tagline: 'Roll over the orange arrows. Whoosh!',
+    grade: 0.04,
+    segments: [
+      straight(12, 0.03),
+      straight(14, 0.02),
+      straight(8, 0.02),
+      straight(12, -0.08),
+      straight(9, 0),
+      straight(10, 0.08),
+      straight(14, 0.02),
+      right(55, 22, 0.04),
+      straight(12, 0.04),
+    ],
+    width: [[0, 9]],
+    surfaces: [boostPad(14), boostPad(27), boostPad(66, 4, -4.3, 0), boostPad(101)],
+    coins: [
+      ...coinRow(3, 3, 2.5),
+      ...coinRow(19.5, 3, 2.5),
+      ...coinRow(36, 4, 3),
+      ...coinRow(48, 3, 2.5),
+      ...coinLine(57, -2, 63, 2, 3),
+      ...coinRow(66, 4, 3, 2.2),
+      ...coinRow(71.5, 2, 2.5, -2.2),
+      ...coinRow(82, 5, 3.6, 1.8),
+      ...coinRow(106, 3, 2.2),
+    ],
+    theme: {
+      tileA: '#3f3f46',
+      tileB: '#a1a1aa',
+      side: '#18181b',
+      rim: '#facc15',
+      skyTop: '#0c1b33',
+      horizon: '#f59e0b',
     },
   },
 ];

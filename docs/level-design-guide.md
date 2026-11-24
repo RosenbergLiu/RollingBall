@@ -112,6 +112,10 @@ Levels live in `src/game/levels.ts` as `LevelDef` objects (`src/game/level.ts`).
     ...coinSpots([[44, 1.5], [47, 0.5], [50, -0.5]]),   // explicit [s, u] spots
   ],
   checkpoints: [55, 105],              // OPTIONAL, adventure levels only: gates at these s (§7.10)
+  surfaces: [                          // OPTIONAL: boost arrows and music tiles (§7.3)
+    boostPad(30),                      // a 4 m pad of forward-pushing arrows, full width
+    ...musicTiles(40, 2, ['C5', 'E5', 'G5'], -1.5, 1.5), // three 2 m keys in a 3 m lane
+  ],
   theme: { tileA, tileB, side, rim, skyTop, horizon },   // hex colors
 }
 ```
@@ -136,6 +140,9 @@ Facts about the format:
   §5 shows how to fake forks today; §7 proposes the real thing.
 - The route may pass **over itself** only with a big vertical gap (as in Overpass, level 8):
   at least 8 m between the two surfaces at the crossing (checked by the tests).
+- `surfaces` are painted rectangles (`s0`–`s1` along, optional `u0`–`u1` across; default the
+  full width) with a behavior. Today: `boost` and `music` (§7.3). The helpers `boostPad`,
+  `musicTiles` and `note` come from `src/game/surfaces.ts`; `surfaceProblems()` checks them.
 - `checkpoints` lists gate positions (authored `s`, in order). Each must sit on a calm rest
   area; `checkpointProblems()` in `src/game/level.ts` checks the §7.10 rules. Grand Tour
   (level 9) is the example.
@@ -353,6 +360,8 @@ unless the §7 feature you need already exists in the engine.
    - slopes follow §4: at most 0.2 either way, smooth changes, no climbing in the first 12 m
    - where the route passes over itself, the surfaces are at least 8 m apart
    - checkpoints follow §7.10, and the autopilot can finish the level from each of them
+   - surface tiles follow §7.3: inside the platform, clear of holes, not overlapping; music
+     keys at least 1.2 m long; boost pads on straights with a clear, calm 15 m after them
    - the shape differs from all other levels
    - ids are sequential
 2. `npm run dev`, then in the browser console run `game.startLevel(<id>)` and
@@ -441,19 +450,46 @@ Engine notes:
 - The tracker switches pieces when the ball lands.
 - The camera eases its height during the fall.
 
-### 7.3 Surface tiles (special materials)
+### 7.3 Surface tiles (special materials) ✅ boost and music built
 Painted strips or patches with their own behavior, each with a distinct look:
 
-- **Boost arrows:** a forward push. Use them on straights and before uphills.
+- **Boost arrows** ✅: a forward push. Use them on straights and before uphills.
 - **Ice:** low friction; it glides. Only on wide, flat areas: fun, not scary.
 - **Mud or sand:** slows the ball. A relief zone before something busy.
 - **Glass:** fully safe, but you can see the void below. A thrill with zero risk.
-- **Music tiles:** each tile plays a note when the ball rolls over it. A "musical
+- **Music tiles** ✅: each tile plays a note when the ball rolls over it. A "musical
   bridge" can play a little tune if the player follows the right line, a wonderful
   hook for kids.
 - **Paint trail:** tiles change color where the ball rolled. Pure delight.
 
-Draft: `surfaces: [{ s0, s1, u0?, u1?, type: 'boost' | 'ice' | 'mud' | 'glass' | 'music' | 'paint', note? }]`
+Format: `surfaces: [{ type: 'boost' | 'music', s0, s1, u0?, u1?, note? }]`, in authored path
+coordinates like holes. Leave out `u0`/`u1` to cover the full width. The code is in
+`src/game/surfaces.ts` (rules and effects) and `src/game/surfaceView.ts` (looks); new
+types (ice, mud, glass, paint) slot into the same format.
+
+**Boost arrows (built)**
+- Look: orange pads with yellow chevrons that scroll forward; they flare when the ball
+  rolls on. Sound: a rising whoosh, plus a light tap on the iPad.
+- Effect: a forward push of 22 m/s² along the route while the ball rolls on the pad. It goes
+  through the same speed cap as the player's push, so the ball never exceeds ~17 m/s.
+- Rules (`surfaceProblems()`): only on straights; for 15 m after the pad no holes, at least
+  5 m wide, and no curve tighter than 20 m radius. Speed must never meet a hazard.
+- Use: on a flat after a calm start (meet), right before a hill so the ball flies up it,
+  in one lane of two (a choice: speed or coins), and as a zoom into the finish.
+- Example: level 11, Zoom Zoom.
+
+**Music tiles (built)**
+- Look: xylophone keys colored by note (C red, D orange, E yellow, F green, G blue, A
+  violet, B pink; lighter for higher octaves), with small gaps between keys. A key flashes
+  when the ball rolls onto it. Sound: a wooden mallet note (marimba-like).
+- Notes: `note('C5')` = 0, in semitones; the range is C4 to C7. Each key plays once when
+  the ball rolls onto it, again only after it left it.
+- Rules: keys at least 1.2 m long (shorter ones blur together); the note in range.
+- Design: 2 m keys play at a nice tempo at kid speeds (about 3 notes a second at 6 m/s).
+  Put the tune on the coin line and something that fits around it in the side lanes (the
+  same tune an octave lower works), so every line sounds good and the "right" one plays
+  the song. Keys across the full width on a curve or a gentle slope make a rising scale.
+- Example: level 10, Musical Bridge ("Twinkle Twinkle Little Star" on the middle lane).
 
 ### 7.4 Banked turns (bobsled)
 The platform tilts into the curve, so the ball can take it fast and swoop.
@@ -616,7 +652,8 @@ gently). The showcase is a good place for the world's one checkpointed adventure
 
 **Existing levels (don't duplicate the hook).** World 1 teaches one basic each, from
 concepts A, D, E, C, U and G above plus a tutorial and a slalom, and ends with S (Grand
-Tour), its checkpointed showcase. Concepts still free: B, F, H–R, T, V, W.
+Tour), its checkpointed showcase. Levels 10 and 11 start the surface tiles (J and a boost
+level). Concepts still free: B, F, H, I, K–R, T, V, W.
 
 | # | Name | Hook | Feeling |
 |---|---|---|---|
@@ -629,6 +666,8 @@ Tour), its checkpointed showcase. Concepts still free: B, F, H–R, T, V, W.
 | 7 | Slalom | Notches on alternate edges, then two "ski gates" | Precision (light) |
 | 8 | Overpass | A 270° loop that rolls under the bridge you started on (9 m+ below) | Wonder |
 | 9 | Grand Tour | Adventure (~180 m) with 3 checkpoints: island, hills, lookout, slalom bend, sweep home | Wonder |
+| 10 | Musical Bridge | Music tiles: a rising scale, a three-lane song bridge, a curve that climbs the scale | Play |
+| 11 | Zoom Zoom | Boost arrows: on the flat, before a hill, in one lane of two, into the finish | Rush |
 
 ---
 

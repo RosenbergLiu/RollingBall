@@ -301,3 +301,45 @@ export function buildStrip(level: BuiltLevel, s0: number, s1: number, lift: numb
   }
   return out;
 }
+
+/**
+ * A patch on the surface between s0 and s1 and across [u0, u1] (default: the full width
+ * minus a sliver), lifted above it and shrunk by `inset` on every side. UVs are in meters:
+ * u across from the patch's left edge, v along from s0.
+ */
+export function buildPatch(
+  level: BuiltLevel,
+  s0: number,
+  s1: number,
+  u0: number | undefined,
+  u1: number | undefined,
+  lift: number,
+  inset = 0,
+  columns = 4,
+): MeshArrays {
+  const out = emptyMesh();
+  const a = s0 + inset;
+  const b = s1 - inset;
+  if (!(b > a)) return out;
+  const rows = Math.max(1, Math.ceil((b - a) / 0.25));
+  for (let j = 0; j <= rows; j++) {
+    const s = a + ((b - a) * j) / rows;
+    const f = pathAt(level.path, s);
+    const half = level.widthAt(s) / 2 - 0.05;
+    const left = (u0 ?? -half) + inset;
+    const right = (u1 ?? half) - inset;
+    for (let i = 0; i <= columns; i++) {
+      const u = left + ((right - left) * i) / columns;
+      const p = f.pos.clone().addScaledVector(f.right, u).addScaledVector(f.normal, lift);
+      pushVertex(out, p, f.normal, u - left, s - a);
+    }
+  }
+  const rl = columns + 1;
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < columns; i++) {
+      const p = j * rl + i;
+      out.indices.push(p, p + 1, p + rl + 1, p, p + rl + 1, p + rl);
+    }
+  }
+  return out;
+}

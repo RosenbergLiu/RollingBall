@@ -16,6 +16,9 @@ or gently uphill. Built with
   - **Joystick**: a virtual stick at the bottom center of the screen. Push it the way you
     want to roll; the farther you push, the stronger the push. Let go and it springs back.
 - Falling off an edge or into a hole is **Game Over**; the ball respawns at the entrance.
+- Some levels have **special tiles**: orange **boost arrows** push the ball forward with a
+  whoosh, and colored **music tiles** each play a note when the ball rolls onto them (follow
+  the coins over the Musical Bridge to hear a song).
 - Long levels have **checkpoints**: glowing gates across the track. Roll through one and it
   lights up; after a fall the ball comes back at the last gate passed instead of the
   entrance, and the timer keeps running. Restart Level and Replay start from the entrance.
@@ -45,6 +48,8 @@ or gently uphill. Built with
 | 7 | Slalom | Notches on alternate edges, then ski gates |
 | 8 | Overpass | Loop around and roll under the start bridge |
 | 9 | Grand Tour | A long adventure with 3 checkpoints |
+| 10 | Musical Bridge | Music tiles that play a song |
+| 11 | Zoom Zoom | Boost arrows |
 
 Levels live in [src/game/levels.ts](src/game/levels.ts). Each is a list of straight/arc segments
 with a grade (drop per meter: positive is downhill, 0 is flat, negative climbs), width
@@ -167,6 +172,8 @@ list them under "Other" until the app comes from the App Store or TestFlight.
 - `src/game/physics.ts` – Rapier world, ball body, touch acceleration and speed cap.
 - `src/game/tracker.ts` – follows the ball along the path (progress, lateral offset, height).
 - `src/game/game.ts` – game loop, states, camera, input mapping.
+- `src/game/surfaces.ts` – surface tiles (boost arrows, music tiles): format, rules, effects.
+- `src/game/surfaceView.ts` – how surface tiles look: scrolling arrows, xylophone keys.
 - `src/game/input.ts` – the control modes: touch and the on-screen joystick.
 - `src/game/settings.ts` – player settings (control mode, sound on/off), saved with `src/game/storage.ts`.
 - `src/game/sound.ts` – sound effects synthesized with the Web Audio API (no audio files): the

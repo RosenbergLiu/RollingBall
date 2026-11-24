@@ -158,6 +158,12 @@ export const COIN_BASE_HZ = 784;
 
 export const semitoneRatio = (n: number) => Math.pow(2, n / 12);
 
+/** Music tiles count their notes in semitones from C5. */
+export const MUSIC_BASE_HZ = 523.25;
+
+/** The pitch (Hz) of a music tile note given in semitones from C5 (A4 = -3 → 440 Hz). */
+export const noteHz = (semitones: number) => MUSIC_BASE_HZ * semitoneRatio(semitones);
+
 /** High notes sound louder to the ear (and to small speakers): turn them down a little. */
 const highTame = (hz: number) => (hz > 1200 ? Math.sqrt(1200 / hz) : 1);
 
@@ -165,6 +171,15 @@ const highTame = (hz: number) => (hz > 1200 ? Math.sqrt(1200 / hz) : 1);
 
 /** Overall volume (before the limiter). */
 const MASTER = 0.8;
+
+/** Half a second of white noise, the raw material of the boost whoosh. */
+function noiseBuffer(ctx: BaseAudioContext): AudioBuffer {
+  const len = Math.floor(ctx.sampleRate * 0.6);
+  const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buffer.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  return buffer;
+}
 
 /**
  * Two seconds of seamless rumble texture: brown noise (deep, soft) with a sprinkle of tiny
@@ -229,6 +244,7 @@ export class SoundGraph {
   private readonly rumbleSource: AudioBufferSourceNode;
   private readonly clickBus: GainNode;
   private readonly clicks: AudioBuffer[];
+  private noise: AudioBuffer | null = null;
 
   constructor(readonly ctx: BaseAudioContext) {
     // A safety ceiling only: normal play stays below it, so nothing pumps or gets squashed.
@@ -374,6 +390,61 @@ export class SoundGraph {
       osc.start(when);
       osc.stop(when + 1.15);
     }
+  }
+
+  /**
+   * A music tile: a wooden mallet note, like a kids' marimba. A warm tone, its bright
+   * tuned overtone and a soft knock, all short so quick notes stay clear.
+   */
+  mallet(when: number, hz: number): void {
+    const ctx = this.ctx;
+    const tame = highTame(hz);
+    for (const [mult, level, decay] of [
+      [1, 0.34, 0.6],
+      [3.93, 0.1, 0.1],
+      [9.2, 0.035, 0.025],
+    ]) {
+      const osc = ctx.createOscillator();
+      osc.frequency.value = hz * mult;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.0001, when);
+      env.gain.exponentialRampToValueAtTime(level * tame, when + 0.003);
+      env.gain.exponentialRampToValueAtTime(0.0001, when + decay);
+      osc.connect(env).connect(this.sfx);
+      osc.start(when);
+      osc.stop(when + decay + 0.02);
+    }
+  }
+
+  /** Boost arrows: a rising "whoosh" of air with a zooming tone underneath. */
+  whoosh(when: number): void {
+    const ctx = this.ctx;
+    this.noise ??= noiseBuffer(ctx);
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    const band = ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.Q.value = 1.2;
+    band.frequency.setValueAtTime(350, when);
+    band.frequency.exponentialRampToValueAtTime(2600, when + 0.32);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0.0001, when);
+    env.gain.exponentialRampToValueAtTime(0.55, when + 0.06);
+    env.gain.exponentialRampToValueAtTime(0.0001, when + 0.5);
+    src.connect(band).connect(env).connect(this.master);
+    src.start(when);
+    src.stop(when + 0.55);
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(220, when);
+    osc.frequency.exponentialRampToValueAtTime(880, when + 0.35);
+    const tone = ctx.createGain();
+    tone.gain.setValueAtTime(0.0001, when);
+    tone.gain.exponentialRampToValueAtTime(0.1, when + 0.05);
+    tone.gain.exponentialRampToValueAtTime(0.0001, when + 0.4);
+    osc.connect(tone).connect(this.sfx);
+    osc.start(when);
+    osc.stop(when + 0.45);
   }
 
   /** A checkpoint gate: a calm, rising two-note bell over a warm chord, with a little glitter. */
@@ -535,6 +606,18 @@ export class Sound {
     // Fade out faster than in: leaving the track or pausing cuts the sound promptly but softly.
     graph.applyRoll(mix, mix.rumble < this.lastRumble ? 0.035 : 0.06);
     this.lastRumble = mix.rumble;
+  }
+
+  /** A music tile's note, in semitones from C5. */
+  note(semitones: number): void {
+    if (!this.ready()) return;
+    this.graph!.mallet(this.ctx!.currentTime + 0.005, noteHz(semitones));
+  }
+
+  /** The whoosh of rolling onto boost arrows. */
+  boost(): void {
+    if (!this.ready()) return;
+    this.graph!.whoosh(this.ctx!.currentTime + 0.005);
   }
 
   /** The chime for rolling through a checkpoint gate. */
