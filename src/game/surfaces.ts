@@ -1,5 +1,4 @@
-import { BALL_RADIUS, ENTRANCE_LENGTH, holeDistance, segmentAt, type BuiltLevel, type TrackState } from './level';
-import { segmentLength } from './path';
+import { BALL_RADIUS, holeDistance, MAIN_PIECE, segmentAt, type BuiltLevel, type BuiltPiece, type TrackState } from './level';
 import type { Vec3 } from './physics';
 
 /*
@@ -91,18 +90,18 @@ export function musicTiles(s: number, tileLength: number, notes: string[], u0?: 
 
 // ---------------------------------------------------------------------- rules at play time
 
-/** The lateral range a surface covers at absolute s. */
-export function surfaceSpan(level: BuiltLevel, x: BuiltSurface, s: number): [number, number] {
-  const half = level.widthAt(s) / 2;
+/** The lateral range a surface covers at absolute s on its piece. */
+export function surfaceSpan(piece: BuiltPiece, x: BuiltSurface, s: number): [number, number] {
+  const half = piece.widthAt(s) / 2;
   return [x.u0 ?? -half, x.u1 ?? half];
 }
 
-/** The surface under (s, u) (absolute s), if any. */
-export function surfaceAt(level: BuiltLevel, s: number, u: number): BuiltSurface | null {
-  for (const x of level.surfaces) {
+/** The surface under (s, u) on a piece (absolute s), if any. */
+export function surfaceAt(piece: BuiltPiece, s: number, u: number): BuiltSurface | null {
+  for (const x of piece.surfaces) {
     if (x.s0 > s) break; // sorted by s0
     if (s >= x.s1) continue;
-    const [u0, u1] = surfaceSpan(level, x, s);
+    const [u0, u1] = surfaceSpan(piece, x, s);
     if (u >= u0 && u <= u1) return x;
   }
   return null;
@@ -120,8 +119,8 @@ export class SurfaceContact {
   }
 
   /** Updates from the tracked ball; returns the surface it just rolled onto, if any. */
-  update(level: BuiltLevel, t: TrackState): BuiltSurface | null {
-    const on = t.height < CONTACT_HEIGHT && t.height > -0.5 ? surfaceAt(level, t.s, t.u) : null;
+  update(t: TrackState): BuiltSurface | null {
+    const on = t.height < CONTACT_HEIGHT && t.height > -0.5 ? surfaceAt(t.piece, t.s, t.u) : null;
     const entered = on && on !== this.current ? on : null;
     this.current = on;
     return entered;
@@ -133,11 +132,11 @@ export class SurfaceContact {
  * ball is on boost arrows. Returns the surface the ball just rolled onto (for sound and
  * light), or null.
  */
-export function applySurfaces(level: BuiltLevel, t: TrackState, contact: SurfaceContact, accel: Vec3): BuiltSurface | null {
-  if (level.surfaces.length === 0) return null;
-  const entered = contact.update(level, t);
+export function applySurfaces(t: TrackState, contact: SurfaceContact, accel: Vec3): BuiltSurface | null {
+  if (t.piece.surfaces.length === 0 && !contact.current) return null;
+  const entered = contact.update(t);
   if (contact.current?.type === 'boost') {
-    const { samples, ds } = level.path;
+    const { samples, ds } = t.piece.path;
     const tan = samples[Math.min(samples.length - 1, Math.max(0, Math.round(t.s / ds)))].tan;
     const h = Math.hypot(tan.x, tan.z) || 1;
     accel.x += (tan.x / h) * BOOST.accel;
@@ -148,42 +147,46 @@ export function applySurfaces(level: BuiltLevel, t: TrackState, contact: Surface
 
 // ---------------------------------------------------------------------- design rules
 
-/** Every surface rule a level breaks (empty when valid). */
+/** Every surface rule a level breaks, on any of its pieces (empty when valid). */
 export function surfaceProblems(level: BuiltLevel): string[] {
-  const def = level.def;
+  return level.pieces.flatMap((piece) => pieceSurfaceProblems(level, piece));
+}
+
+function pieceSurfaceProblems(level: BuiltLevel, piece: BuiltPiece): string[] {
   const problems: string[] = [];
-  const authored = def.segments.reduce((sum, seg) => sum + segmentLength(seg), 0);
-  const xs = level.surfaces;
+  const authored = piece.authoredLength;
+  const xs = piece.surfaces;
+  const label = piece.id === MAIN_PIECE ? '' : `piece ${piece.id}: `;
   const name = (x: BuiltSurface) =>
-    `${x.type} tile at s ${(x.s0 - ENTRANCE_LENGTH).toFixed(1)}–${(x.s1 - ENTRANCE_LENGTH).toFixed(1)}`;
+    `${label}${x.type} tile at s ${(x.s0 - piece.offset).toFixed(1)}–${(x.s1 - piece.offset).toFixed(1)}`;
   xs.forEach((x, i) => {
-    const a0 = x.s0 - ENTRANCE_LENGTH;
-    const a1 = x.s1 - ENTRANCE_LENGTH;
+    const a0 = x.s0 - piece.offset;
+    const a1 = x.s1 - piece.offset;
     const where = name(x);
     if (!(x.s1 > x.s0)) problems.push(`${where} has no length`);
     if (a0 < 0 || a1 > authored) problems.push(`${where} is outside the authored route`);
     if (x.u0 !== undefined && x.u1 !== undefined && !(x.u1 > x.u0)) problems.push(`${where} has no width`);
     for (let s = x.s0; s <= x.s1 + 1e-9; s += 0.5) {
-      const half = level.widthAt(s) / 2 - MARGIN;
-      const [u0, u1] = surfaceSpan(level, x, s);
+      const half = piece.widthAt(s) / 2 - MARGIN;
+      const [u0, u1] = surfaceSpan(piece, x, s);
       if ((x.u0 !== undefined && u0 < -half) || (x.u1 !== undefined && u1 > half)) {
-        problems.push(`${where} sticks out over the edge at s ${(s - ENTRANCE_LENGTH).toFixed(1)}`);
+        problems.push(`${where} sticks out over the edge at s ${(s - piece.offset).toFixed(1)}`);
         break;
       }
     }
-    for (const h of level.holes) {
+    for (const h of piece.holes) {
       // Closest point of the rectangle to the hole center (in path coordinates).
       const s = Math.min(Math.max(h.s, x.s0), x.s1);
-      const [u0, u1] = surfaceSpan(level, x, s);
+      const [u0, u1] = surfaceSpan(piece, x, s);
       const u = Math.min(Math.max(h.u, u0), u1);
-      if (holeDistance(h, s, u) < h.r + MARGIN) problems.push(`${where} overlaps the hole at s ${(h.s - ENTRANCE_LENGTH).toFixed(1)}`);
+      if (holeDistance(h, s, u) < h.r + MARGIN) problems.push(`${where} overlaps the hole at s ${(h.s - piece.offset).toFixed(1)}`);
     }
     for (let j = 0; j < i; j++) {
       const y = xs[j];
       if (y.s1 <= x.s0 + 1e-9 || x.s1 <= y.s0 + 1e-9) continue;
       const s = (Math.max(x.s0, y.s0) + Math.min(x.s1, y.s1)) / 2;
-      const [xu0, xu1] = surfaceSpan(level, x, s);
-      const [yu0, yu1] = surfaceSpan(level, y, s);
+      const [xu0, xu1] = surfaceSpan(piece, x, s);
+      const [yu0, yu1] = surfaceSpan(piece, y, s);
       if (xu0 < yu1 - 1e-9 && yu0 < xu1 - 1e-9) problems.push(`${where} overlaps the ${name(y)}`);
     }
     if (x.type === 'music') {
@@ -193,7 +196,7 @@ export function surfaceProblems(level: BuiltLevel): string[] {
     if (x.type === 'boost') {
       // On a straight, and a calm, clear route after it: speed must never meet a hazard.
       for (let s = a0; s <= a1 + 1e-9; s += 0.5) {
-        const at = segmentAt(def, s);
+        const at = segmentAt(piece, s);
         if (at && at.seg.kind !== 'straight') {
           problems.push(`${where} is not on a straight`);
           break;
@@ -201,20 +204,22 @@ export function surfaceProblems(level: BuiltLevel): string[] {
       }
       const end = Math.min(a1 + BOOST.clearAfter, authored);
       for (let s = a1; s <= end + 1e-9; s += 0.5) {
-        const at = segmentAt(def, s);
+        const at = segmentAt(piece, s);
         if (at && at.seg.kind === 'arc' && at.seg.radius < BOOST.minRadiusAfter) {
           problems.push(`${where} leads into a curve tighter than ${BOOST.minRadiusAfter} m`);
           break;
         }
-        if (level.widthAt(s + ENTRANCE_LENGTH) < BOOST.minWidthAfter) {
+        if (piece.widthAt(s + piece.offset) < BOOST.minWidthAfter) {
           problems.push(`${where} leads into a section narrower than ${BOOST.minWidthAfter} m`);
           break;
         }
       }
-      for (const h of def.holes ?? []) {
-        if (h.s + h.r > a0 && h.s - h.r < end) problems.push(`${where} leads into the hole at s ${h.s}`);
+      for (const h of piece.holes) {
+        const hs = h.s - piece.offset;
+        if (hs + h.r > a0 && hs - h.r < end) problems.push(`${where} leads into the hole at s ${hs}`);
       }
     }
   });
+  void level;
   return problems;
 }

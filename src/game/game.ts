@@ -5,10 +5,10 @@ import { emptyCoinCounts, rollCoins, totalCoins, touchedCoins, type CoinCounts, 
 import { CoinField } from './coinView';
 import { haptics } from './haptics';
 import { Controls } from './input';
-import { BALL_RADIUS, buildLevel, hasFallen, hasFinished, passedCheckpoint, spawnPoint, type BuiltLevel } from './level';
+import { BALL_RADIUS, buildLevel, hasFallen, hasFinished, passedCheckpoint, routeProgress, spawnPoint, type BuiltLevel } from './level';
 import { LEVELS } from './levels';
 import { PhysicsWorld, PHYSICS, type Vec3 } from './physics';
-import { buildPlatform } from './platform';
+import { buildPlatform, mergeColliders } from './platform';
 import { isUnlocked, nextPlayableLevel, recordCompletion, type ProgressData } from './progress';
 import type { Settings } from './settings';
 import { contactFactor, Sound } from './sound';
@@ -238,9 +238,13 @@ export class Game {
     const def = LEVELS.find((l) => l.id === id) ?? LEVELS[0];
     this.unloadLevel();
     const level = buildLevel(def);
-    const platform = buildPlatform(level);
-    this.physics.setPlatform(platform.topCollider, platform.wallCollider);
-    this.view = new LevelView(level, platform);
+    // One platform per track piece; physics gets them merged into one top and one set of walls.
+    const platforms = level.pieces.map((piece) => buildPlatform(piece));
+    this.physics.setPlatform(
+      mergeColliders(platforms.map((p) => p.topCollider)),
+      mergeColliders(platforms.map((p) => p.wallCollider)),
+    );
+    this.view = new LevelView(level, platforms);
     this.scene.add(this.view.group);
     this.surfaceView = new SurfaceView(level);
     this.scene.add(this.surfaceView.group);
@@ -366,7 +370,7 @@ export class Game {
       this.ui.showGameOver(false);
       this.ui.showHint(true);
       this.ui.updateHud(0, this.falls, 0);
-      this.ui.setCheckpoints(level.checkpoints.map((cs) => cs / level.finishS), -1);
+      this.ui.setCheckpoints(level.checkpoints.map((cs) => cs / level.routeLength), -1);
     }
   }
 
@@ -380,7 +384,7 @@ export class Game {
     this.placeBallAt(s);
     if (this.mode === 'play') {
       this.ui.showGameOver(false);
-      this.ui.updateHud(this.runTime, this.falls, s / level.finishS);
+      this.ui.updateHud(this.runTime, this.falls, s / level.routeLength);
     }
   }
 
@@ -399,13 +403,14 @@ export class Game {
   private checkCheckpoints(): void {
     const level = this.level!;
     const tracker = this.tracker!;
-    if (level.checkpoints.length === 0 || tracker.height < -0.8) return;
+    // Checkpoints are on the main route (gates on other pieces are not supported yet).
+    if (level.checkpoints.length === 0 || tracker.piece !== level || tracker.height < -0.8) return;
     const k = passedCheckpoint(level.checkpoints, tracker.s, this.reachedCheckpoint);
     if (k === this.reachedCheckpoint) return;
     this.reachedCheckpoint = k;
     this.view?.setCheckpoint(k, this.elapsed);
     if (this.mode !== 'play') return;
-    this.ui.setCheckpoints(level.checkpoints.map((cs) => cs / level.finishS), k);
+    this.ui.setCheckpoints(level.checkpoints.map((cs) => cs / level.routeLength), k);
     this.ui.flashCheckpoint();
     this.sound.checkpoint();
     haptics.checkpoint();
@@ -505,7 +510,7 @@ export class Game {
     this.prevQuat.copy(this.currQuat);
     this.computeControl();
     if (this.phase === 'rolling') {
-      const entered = applySurfaces(level, tracker, this.surfaceContact, this.accel);
+      const entered = applySurfaces(tracker, this.surfaceContact, this.accel);
       if (entered) this.onSurface(entered);
     }
     this.physics.setAcceleration(this.accel);
@@ -578,7 +583,7 @@ export class Game {
     this.surfaceView?.update(this.elapsed);
     this.coinField?.update(this.elapsed);
     if (this.mode === 'play' && this.level && this.tracker) {
-      this.ui.updateHud(this.runTime, this.falls, this.tracker.s / this.level.finishS);
+      this.ui.updateHud(this.runTime, this.falls, routeProgress(this.level, this.tracker));
     }
     this.renderer.render(this.scene, this.camera);
     this.reportFrameRate(rawDt, performance.now() - workStart, physicsMs);

@@ -167,10 +167,12 @@ list them under "Other" until the app comes from the App Store or TestFlight.
 ## Code map
 
 - `src/game/path.ts` – turns segments into a smooth sampled centerline.
-- `src/game/level.ts` – level types, widths, holes, spawn/fall/finish rules, checkpoint rules.
+- `src/game/level.ts` – level types, track pieces (placement, route distance), widths, holes,
+  spawn/fall/finish rules, checkpoint, piece and overlap rules.
 - `src/game/platform.ts` – builds the platform mesh (top, walls, rim, round holes) and colliders.
 - `src/game/physics.ts` – Rapier world, ball body, touch acceleration and speed cap.
-- `src/game/tracker.ts` – follows the ball along the path (progress, lateral offset, height).
+- `src/game/tracker.ts` – follows the ball along the track (piece, progress, lateral offset,
+  height); moves to another piece when the ball lands on it.
 - `src/game/game.ts` – game loop, states, camera, input mapping.
 - `src/game/surfaces.ts` – surface tiles (boost arrows, music tiles): format, rules, effects.
 - `src/game/surfaceView.ts` – how surface tiles look: scrolling arrows, xylophone keys.

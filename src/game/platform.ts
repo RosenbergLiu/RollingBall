@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import { holeDistance, type BuiltHole, type BuiltLevel } from './level';
+import { holeDistance, type BuiltHole, type BuiltPiece } from './level';
 import { pathAt } from './path';
 
 export interface MeshArrays {
@@ -14,6 +14,26 @@ export const emptyMesh = (): MeshArrays => ({ positions: [], normals: [], uvs: [
 export interface ColliderMesh {
   vertices: Float32Array;
   indices: Uint32Array;
+}
+
+/**
+ * One collider mesh out of several (one per track piece), so the physics world gets a
+ * single top surface and a single set of walls however many pieces a level has.
+ */
+export function mergeColliders(meshes: ColliderMesh[]): ColliderMesh {
+  if (meshes.length === 1) return meshes[0];
+  const vertices = new Float32Array(meshes.reduce((n, m) => n + m.vertices.length, 0));
+  const indices = new Uint32Array(meshes.reduce((n, m) => n + m.indices.length, 0));
+  let v = 0;
+  let i = 0;
+  for (const m of meshes) {
+    vertices.set(m.vertices, v);
+    const base = v / 3;
+    for (let k = 0; k < m.indices.length; k++) indices[i + k] = m.indices[k] + base;
+    v += m.vertices.length;
+    i += m.indices.length;
+  }
+  return { vertices, indices };
 }
 
 export interface PlatformMesh {
@@ -88,7 +108,7 @@ function snapToHole(holes: BuiltHole[], VS: Float64Array, VU: Float64Array, k: n
  * are removed, boundary vertices are snapped onto the hole circles, and walls, rim strips
  * and an underside are generated for every open edge.
  */
-export function buildPlatform(level: BuiltLevel, options: Partial<PlatformOptions> = {}): PlatformMesh {
+export function buildPlatform(level: BuiltPiece, options: Partial<PlatformOptions> = {}): PlatformMesh {
   const o = { ...PLATFORM_DEFAULTS, ...options };
   const { path } = level;
   const n = path.samples.length;
@@ -276,7 +296,7 @@ export function buildPlatform(level: BuiltLevel, options: Partial<PlatformOption
 }
 
 /** A strip covering the full platform width between s0 and s1, lifted above the surface. */
-export function buildStrip(level: BuiltLevel, s0: number, s1: number, lift: number, segments = 8): MeshArrays {
+export function buildStrip(level: BuiltPiece, s0: number, s1: number, lift: number, segments = 8): MeshArrays {
   const out = emptyMesh();
   const rows = Math.max(1, Math.ceil((s1 - s0) / 0.25));
   for (let j = 0; j <= rows; j++) {
@@ -308,7 +328,7 @@ export function buildStrip(level: BuiltLevel, s0: number, s1: number, lift: numb
  * u across from the patch's left edge, v along from s0.
  */
 export function buildPatch(
-  level: BuiltLevel,
+  level: BuiltPiece,
   s0: number,
   s1: number,
   u0: number | undefined,

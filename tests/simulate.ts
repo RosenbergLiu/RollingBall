@@ -1,7 +1,7 @@
 import { Autopilot } from '../src/game/autopilot';
 import { buildLevel, hasFallen, hasFinished, spawnPoint, type LevelDef } from '../src/game/level';
 import { PhysicsWorld, PHYSICS, type Vec3 } from '../src/game/physics';
-import { buildPlatform } from '../src/game/platform';
+import { buildPlatform, mergeColliders } from '../src/game/platform';
 import { applySurfaces, SurfaceContact } from '../src/game/surfaces';
 import { PathTracker } from '../src/game/tracker';
 
@@ -15,6 +15,9 @@ export interface SimResult {
   notes: number[];
   /** How many times the ball rolled onto boost arrows. */
   boosts: number;
+  /** The piece the ball ended on, and every piece it was on, in order. */
+  piece: string;
+  pieces: string[];
 }
 
 export type Controller = (ctx: { tracker: PathTracker; pos: Vec3; vel: Vec3; out: Vec3; t: number }) => void;
@@ -25,9 +28,9 @@ export type Controller = (ctx: { tracker: PathTracker; pos: Vec3; vel: Vec3; out
  */
 export function simulate(def: LevelDef, opts: { maxTime?: number; controller?: Controller; startS?: number } = {}): SimResult {
   const level = buildLevel(def);
-  const platform = buildPlatform(level);
+  const platforms = level.pieces.map((piece) => buildPlatform(piece));
   const physics = new PhysicsWorld();
-  physics.setPlatform(platform.topCollider, platform.wallCollider);
+  physics.setPlatform(mergeColliders(platforms.map((p) => p.topCollider)), mergeColliders(platforms.map((p) => p.wallCollider)));
   const tracker = new PathTracker(level);
   const pilot = new Autopilot(level);
   const startS = opts.startS ?? level.spawnS;
@@ -39,6 +42,7 @@ export function simulate(def: LevelDef, opts: { maxTime?: number; controller?: C
   const contact = new SurfaceContact();
   const notes: number[] = [];
   let boosts = 0;
+  const visited: string[] = [];
   let outcome: SimResult['outcome'] = 'timeout';
   let t = 0;
   try {
@@ -47,7 +51,7 @@ export function simulate(def: LevelDef, opts: { maxTime?: number; controller?: C
       const vel = physics.ball.linvel();
       if (opts.controller) opts.controller({ tracker, pos, vel, out: accel, t });
       else pilot.compute(tracker, pos, vel, accel);
-      const entered = applySurfaces(level, tracker, contact, accel);
+      const entered = applySurfaces(tracker, contact, accel);
       if (entered?.type === 'music') notes.push(entered.note);
       if (entered?.type === 'boost') boosts++;
       physics.setAcceleration(accel);
@@ -56,6 +60,7 @@ export function simulate(def: LevelDef, opts: { maxTime?: number; controller?: C
       const v = physics.ball.linvel();
       maxSpeed = Math.max(maxSpeed, Math.hypot(v.x, v.y, v.z));
       tracker.update(p);
+      if (visited[visited.length - 1] !== tracker.piece.id) visited.push(tracker.piece.id);
       if (hasFallen(level, tracker, p.y)) {
         outcome = 'fell';
         break;
@@ -65,7 +70,7 @@ export function simulate(def: LevelDef, opts: { maxTime?: number; controller?: C
         break;
       }
     }
-    return { outcome, time: t, s: tracker.s, finishS: level.finishS, maxSpeed, notes, boosts };
+    return { outcome, time: t, s: tracker.s, finishS: level.finishS, maxSpeed, notes, boosts, piece: tracker.piece.id, pieces: visited };
   } finally {
     physics.dispose();
   }

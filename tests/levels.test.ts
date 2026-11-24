@@ -1,6 +1,16 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { Autopilot } from '../src/game/autopilot';
-import { buildLevel, checkpointProblems, holeDistance, MAX_GRADE, passedCheckpoint, slopeProblems, type LevelDef } from '../src/game/level';
+import {
+  buildLevel,
+  checkpointProblems,
+  holeDistance,
+  MAX_GRADE,
+  overlapProblems,
+  passedCheckpoint,
+  pieceProblems,
+  slopeProblems,
+  type LevelDef,
+} from '../src/game/level';
 import { right, straight } from '../src/game/path';
 import { LEVELS } from '../src/game/levels';
 import { initPhysics, PHYSICS } from '../src/game/physics';
@@ -16,35 +26,26 @@ describe('level catalog', () => {
   });
 
   it('gives every level a different shape', () => {
-    const shapes = LEVELS.map((l) => JSON.stringify([l.segments, l.width, l.holes ?? []]));
+    const shapes = LEVELS.map((l) => JSON.stringify([l.segments, l.width, l.holes ?? [], l.pieces ?? []]));
     expect(new Set(shapes).size).toBe(LEVELS.length);
   });
 
-  it('keeps at least 8 m between the surfaces wherever a route passes over itself', () => {
-    for (const def of LEVELS) {
-      const { path, widthAt } = buildLevel(def);
-      const every = Math.round(1 / path.ds); // check every meter
-      const S = path.samples;
-      for (let i = 0; i < S.length; i += every) {
-        // Only compare parts of the route at least 20 m apart along the path.
-        for (let j = i + Math.round(20 / path.ds); j < S.length; j += every) {
-          const a = S[i].pos;
-          const b = S[j].pos;
-          const reach = (widthAt(i * path.ds) + widthAt(j * path.ds)) / 2 + 0.5;
-          if (Math.hypot(a.x - b.x, a.z - b.z) < reach) {
-            expect(Math.abs(a.y - b.y), `${def.name}: s ${(i * path.ds).toFixed(0)} over s ${(j * path.ds).toFixed(0)}`).toBeGreaterThan(8);
-          }
-        }
-      }
-    }
+  it('keeps at least 8 m between the surfaces wherever the track passes over itself', () => {
+    for (const def of LEVELS) expect(overlapProblems(buildLevel(def)), def.name).toEqual([]);
   });
 
-  it('keeps every hole inside the authored part of the path', () => {
+  it('uses only valid extra track pieces', () => {
+    for (const def of LEVELS) expect(pieceProblems(def), def.name).toEqual([]);
+  });
+
+  it('keeps every hole inside the authored part of its piece', () => {
     for (const def of LEVELS) {
       const level = buildLevel(def);
-      for (const h of level.holes) {
-        expect(h.s - h.r).toBeGreaterThan(level.spawnS + 3);
-        expect(h.s + h.r).toBeLessThan(level.finishS - 1);
+      for (const piece of level.pieces) {
+        for (const h of piece.holes) {
+          expect(h.s - h.r).toBeGreaterThan(piece === level ? level.spawnS + 3 : 0);
+          expect(h.s + h.r).toBeLessThan((piece.finishLine ?? piece.path.length) - 1);
+        }
       }
     }
   });

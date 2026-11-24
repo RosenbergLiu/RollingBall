@@ -1,4 +1,4 @@
-import { holeDistance, type BuiltLevel } from './level';
+import { holeDistance, type BuiltLevel, type BuiltPiece } from './level';
 import { pathAt } from './path';
 import { PHYSICS, type Vec3 } from './physics';
 import type { PathTracker, Vec3Like } from './tracker';
@@ -12,14 +12,15 @@ const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 export class Autopilot {
   cruiseSpeed = 8;
 
-  constructor(private readonly level: BuiltLevel) {}
+  /** The level it drives on (it steers on whichever of its pieces the ball is on). */
+  constructor(readonly level: BuiltLevel) {}
 
-  /** How dangerous it is for the ball center to be at (s, u). */
-  private danger(s: number, u: number): number {
+  /** How dangerous it is for the ball center to be at (s, u) on a piece. */
+  private danger(piece: BuiltPiece, s: number, u: number): number {
     let c = 0;
-    const clearEdge = this.level.widthAt(s) / 2 - 0.75 - Math.abs(u);
+    const clearEdge = piece.widthAt(s) / 2 - 0.75 - Math.abs(u);
     if (clearEdge < 0.5) c += (0.5 - clearEdge) * 25;
-    for (const h of this.level.holes) {
+    for (const h of piece.holes) {
       if (Math.abs(s - h.s) > (h.r + 2.5) / Math.min(1, h.m)) continue;
       const clear = holeDistance(h, s, u) - h.r - 0.5;
       if (clear < 0.9) c += (0.9 - clear) * 20;
@@ -28,7 +29,8 @@ export class Autopilot {
   }
 
   compute(tracker: PathTracker, pos: Vec3Like, vel: Vec3Like, out: Vec3): Vec3 {
-    const L = this.level;
+    // Drive on whichever piece the ball is on (a drop moves it to the piece below).
+    const L = tracker.piece;
     const speed = Math.hypot(vel.x, vel.z);
     const look = clamp(2.5 + speed * 0.4, 3, 7);
     const s0 = tracker.s;
@@ -44,7 +46,7 @@ export class Autopilot {
       let cost = 0.05 * Math.abs(u) + 0.15 * Math.abs(u - u0);
       for (let q = 1; q <= 8; q++) {
         const f = q / 8;
-        cost += this.danger(s0 + (sT - s0) * f, u0 + (u - u0) * f) * (1.2 - f * 0.5);
+        cost += this.danger(L, s0 + (sT - s0) * f, u0 + (u - u0) * f) * (1.2 - f * 0.5);
       }
       if (cost < bestCost) {
         bestCost = cost;

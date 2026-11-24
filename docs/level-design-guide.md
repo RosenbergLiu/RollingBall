@@ -136,7 +136,13 @@ Facts about the format:
   overlapping holes makes a slot with scalloped edges.
 - Coin spots use the same `s`/`u` coordinates as holes. The helpers `coinRow`, `coinLine` and
   `coinSpots` come from `src/game/coins.ts`.
-- Exactly **one continuous ribbon** per level: no forks, no gaps, no separate platforms.
+- **Track pieces (foundation built):** a level may add `pieces`: extra ribbons built like the
+  main route (`segments`, `width`, `holes`, `coins`, `surfaces`), each starting from a point on
+  `'main'` or an earlier piece: `from: { piece, s, u?, dy?, turn? }`. One piece may have
+  `finish: true` (then the main route ends without a run-out). The tracker moves the ball to
+  any piece it lands on; a fall means below every piece within reach. `pieceProblems()` and
+  `overlapProblems()` check them. Design rules and helpers for drops (§7.2) and forks (§7.1)
+  come next; until then, levels are one ribbon.
   §5 shows how to fake forks today; §7 proposes the real thing.
 - The route may pass **over itself** only with a big vertical gap (as in Overpass, level 8):
   at least 8 m between the two surfaces at the crossing (checked by the tests).
@@ -387,12 +393,12 @@ come with tests. Each one says what it adds, the design rules, and a draft data 
 **Fresh because:** real choice. A scenic long way and a quick narrow way, or two
 completely different mini-adventures that meet again.
 
-Draft format: a level becomes a set of **pieces** (each piece is today's ribbon) plus links.
+Format: built on track pieces (§3). A branch is a piece that starts from the main route
+(`from: { piece: 'main', s: 30, u: -4, turn: 20 }`); a merge will need a "rejoins at" link.
 ```ts
 pieces: [
-  { id: 'main', segments: [...], width: [...] },
-  { id: 'scenic', branchFrom: { piece: 'main', s: 30, side: 'left' },
-    mergeInto: { piece: 'main', s: 75 }, segments: [...], width: [...] },
+  { id: 'scenic', from: { piece: 'main', s: 30, u: -4, turn: 20 },
+    segments: [...], width: [...] },   // merging back into 'main' is still to build
 ],
 ```
 Design rules:
@@ -408,11 +414,12 @@ Design rules:
 
 Engine notes:
 
-- Build a platform for each piece, and add junction pads where pieces meet.
-- The tracker follows the piece under the ball.
-- The camera's heading comes from the current piece.
-- The progress bar uses the main route.
-- The autopilot needs a route choice so the tests can cover both branches.
+- ✅ Built with track pieces: a platform for each piece (merged into one collider), the
+  tracker follows the piece under the ball, the camera's heading comes from the current
+  piece, and the progress bar counts route distance (`routeProgress()`).
+- To build: merges (a piece rejoining another on a junction pad, with seam-free collision),
+  the fork and merge design rules above, and a route choice for the autopilot so the tests
+  cover both branches.
 
 ### 7.2 Drops: falling onto a new platform on purpose
 **Fresh because:** a moment of "whoa!" with no risk. The ball sails off a lip and lands on

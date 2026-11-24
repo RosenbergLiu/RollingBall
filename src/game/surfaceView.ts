@@ -87,16 +87,16 @@ export class SurfaceView {
   private readonly arrowMap: THREE.Texture | null = null;
   private boostHitAt = -1;
   private readonly tileColors: THREE.BufferAttribute | null = null;
-  private readonly tiles = new Map<number, TileRange>();
+  private readonly tiles = new Map<BuiltSurface, TileRange>();
   private readonly glowing = new Set<TileRange>();
 
   constructor(level: BuiltLevel) {
     const boost = emptyMesh();
     const music = emptyMesh();
     const colors: number[] = [];
-    for (const x of level.surfaces) {
+    for (const piece of level.pieces) for (const x of piece.surfaces) {
       if (x.type === 'boost') {
-        const m = buildPatch(level, x.s0, x.s1, x.u0, x.u1, 0.022, 0);
+        const m = buildPatch(piece, x.s0, x.s1, x.u0, x.u1, 0.022, 0);
         // UVs in chevrons: across every CHEVRON_WIDTH m, along every CHEVRON_LENGTH m.
         for (let i = 0; i < m.uvs.length; i += 2) {
           m.uvs[i] /= CHEVRON_WIDTH;
@@ -104,12 +104,12 @@ export class SurfaceView {
         }
         appendMesh(boost, m);
       } else {
-        const m = buildPatch(level, x.s0, x.s1, x.u0, x.u1, 0.02, TILE_INSET, 2);
+        const m = buildPatch(piece, x.s0, x.s1, x.u0, x.u1, 0.02, TILE_INSET, 2);
         const start = appendMesh(music, m);
         const count = m.positions.length / 3;
         const base = noteColor(x.note).multiplyScalar(0.85);
         for (let i = 0; i < count; i++) colors.push(base.r, base.g, base.b);
-        this.tiles.set(x.index, { start, count, base, hitAt: -1 });
+        this.tiles.set(x, { start, count, base, hitAt: -1 });
       }
     }
     if (boost.indices.length > 0) {
@@ -138,7 +138,7 @@ export class SurfaceView {
       this.boostHitAt = time;
       return;
     }
-    const tile = this.tiles.get(x.index);
+    const tile = this.tiles.get(x);
     if (!tile) return;
     tile.hitAt = time;
     this.glowing.add(tile);

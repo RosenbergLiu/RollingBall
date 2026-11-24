@@ -63,7 +63,7 @@ function renderIcon(): HTMLCanvasElement {
   env.setShadowMapSize(4096);
 
   const level = buildLevel(ICON_LEVEL);
-  const view = new LevelView(level, buildPlatform(level));
+  const view = new LevelView(level, level.pieces.map((piece) => buildPlatform(piece)));
   view.group.traverse((o) => {
     if ((o as THREE.Points).isPoints) o.visible = false; // no floating specks in the icon
   });

@@ -1,5 +1,5 @@
 import { Vector3 } from 'three';
-import { ENTRANCE_LENGTH, holeDistance, type BuiltLevel } from './level';
+import { holeDistance, MAIN_PIECE, type BuiltLevel, type BuiltPiece } from './level';
 import { pathAt } from './path';
 
 /** Coin colors from most common to most rare. */
@@ -82,16 +82,20 @@ export function rollColor(random: () => number = Math.random): CoinColor {
  */
 export function rollCoins(level: BuiltLevel, random: () => number = Math.random): SpawnedCoin[] {
   const coins: SpawnedCoin[] = [];
-  level.coinSpots.forEach((spot, i) => {
-    if (random() >= COIN_SPAWN_CHANCE) return;
-    coins.push({ spot: i, color: rollColor(random), pos: coinPosition(level, spot), collected: false });
-  });
+  let i = 0;
+  for (const piece of level.pieces) {
+    for (const spot of piece.coinSpots) {
+      const index = i++;
+      if (random() >= COIN_SPAWN_CHANCE) continue;
+      coins.push({ spot: index, color: rollColor(random), pos: coinPosition(piece, spot), collected: false });
+    }
+  }
   return coins;
 }
 
 /** World position of a coin on a spot (spot s is absolute along the built path). */
-export function coinPosition(level: BuiltLevel, spot: CoinSpot): Vector3 {
-  const f = pathAt(level.path, spot.s);
+export function coinPosition(piece: BuiltPiece, spot: CoinSpot): Vector3 {
+  const f = pathAt(piece.path, spot.s);
   return f.pos.addScaledVector(f.right, spot.u).addScaledVector(f.normal, COIN_HEIGHT);
 }
 
@@ -124,14 +128,20 @@ export const COIN_RULES = {
 /** Every rule a level's coin spots break (empty when all spots are valid). */
 export function coinSpotProblems(level: BuiltLevel): string[] {
   const problems: string[] = [];
-  const positions = level.coinSpots.map((spot) => coinPosition(level, spot));
-  level.coinSpots.forEach((spot, i) => {
-    const where = `coin spot ${i} (s ${(spot.s - ENTRANCE_LENGTH).toFixed(1)}, u ${spot.u.toFixed(2)})`;
-    if (spot.s < ENTRANCE_LENGTH + COIN_RULES.startMargin) problems.push(`${where} is before the start of the route`);
-    if (spot.s > level.finishS - COIN_RULES.finishMargin) problems.push(`${where} is at or past the finish line`);
-    const half = level.widthAt(spot.s) / 2;
+  const all = level.pieces.flatMap((piece) => piece.coinSpots.map((spot) => ({ piece, spot })));
+  const positions = all.map(({ piece, spot }) => coinPosition(piece, spot));
+  all.forEach(({ piece, spot }, i) => {
+    const label = piece.id === MAIN_PIECE ? '' : `piece ${piece.id}: `;
+    const where = `${label}coin spot ${i} (s ${(spot.s - piece.offset).toFixed(1)}, u ${spot.u.toFixed(2)})`;
+    if (spot.s < piece.offset + COIN_RULES.startMargin) problems.push(`${where} is before the start of the route`);
+    // Up to the finish line on the piece that has it; elsewhere up to the piece's end.
+    const end = piece.finishLine ?? piece.path.length;
+    if (spot.s > end - COIN_RULES.finishMargin) {
+      problems.push(`${where} is at or past the ${piece.finishLine === null ? 'end of its piece' : 'finish line'}`);
+    }
+    const half = piece.widthAt(spot.s) / 2;
     if (Math.abs(spot.u) > half - COIN_RULES.edgeMargin) problems.push(`${where} is too close to the edge`);
-    for (const h of level.holes) {
+    for (const h of piece.holes) {
       if (holeDistance(h, spot.s, spot.u) < h.r + COIN_RULES.holeMargin) problems.push(`${where} is in or too close to a hole`);
     }
     for (let j = 0; j < i; j++) {

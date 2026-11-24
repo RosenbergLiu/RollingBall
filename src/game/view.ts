@@ -240,33 +240,37 @@ export class LevelView {
   private readonly bannerMat: THREE.MeshBasicMaterial;
   private readonly gates: GateView[] = [];
 
-  constructor(level: BuiltLevel, platform: PlatformMesh) {
+  /** `platforms`: one per track piece, in the order of `level.pieces`. */
+  constructor(level: BuiltLevel, platforms: PlatformMesh[]) {
     const theme = level.def.theme;
     const topMat = new THREE.MeshStandardMaterial({ map: tileTexture(theme), roughness: 0.82, metalness: 0.0 });
     const sideMat = new THREE.MeshStandardMaterial({ color: theme.side, roughness: 0.8, metalness: 0.15 });
     const rimMat = new THREE.MeshBasicMaterial({ color: theme.rim, toneMapped: false });
 
-    const top = new THREE.Mesh(toGeometry(platform.top), topMat);
-    top.receiveShadow = true;
-    top.castShadow = true;
-    const walls = new THREE.Mesh(toGeometry(platform.walls), sideMat);
-    walls.receiveShadow = true;
-    walls.castShadow = true;
-    const bottom = new THREE.Mesh(toGeometry(platform.bottom), sideMat);
-    const rim = new THREE.Mesh(toGeometry(platform.rim), rimMat);
-    this.group.add(top, walls, bottom, rim);
+    for (const platform of platforms) {
+      const top = new THREE.Mesh(toGeometry(platform.top), topMat);
+      top.receiveShadow = true;
+      top.castShadow = true;
+      const walls = new THREE.Mesh(toGeometry(platform.walls), sideMat);
+      walls.receiveShadow = true;
+      walls.castShadow = true;
+      const bottom = new THREE.Mesh(toGeometry(platform.bottom), sideMat);
+      const rim = new THREE.Mesh(toGeometry(platform.rim), rimMat);
+      this.group.add(top, walls, bottom, rim);
+    }
 
-    // Finish line: checkered strip on the surface plus a gate with a banner.
+    // Finish line (on the piece that has it): checkered strip on the surface plus a gate with a banner.
+    const fp = level.finish;
     const checker = checkerTexture();
     const strip = new THREE.Mesh(
-      toGeometry(buildStrip(level, level.finishS - 0.6, level.finishS + 0.6, 0.015)),
+      toGeometry(buildStrip(fp, level.finishS - 0.6, level.finishS + 0.6, 0.015)),
       new THREE.MeshStandardMaterial({ map: checker, roughness: 0.6 }),
     );
     strip.receiveShadow = true;
     this.group.add(strip);
 
-    const f = pathAt(level.path, level.finishS);
-    const w = level.widthAt(level.finishS);
+    const f = pathAt(fp.path, level.finishS);
+    const w = fp.widthAt(level.finishS);
     const postMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, metalness: 0.9, roughness: 0.25 });
     const postGeo = new THREE.CylinderGeometry(0.13, 0.13, 4.6, 20);
     for (const side of [-1, 1]) {
@@ -329,7 +333,7 @@ export class LevelView {
   /** Floating specks around the level give a sense of speed and depth. */
   private createParticles(level: BuiltLevel, theme: Theme): THREE.Points {
     const box = new THREE.Box3();
-    for (const s of level.path.samples) box.expandByPoint(s.pos);
+    for (const piece of level.pieces) for (const s of piece.path.samples) box.expandByPoint(s.pos);
     box.expandByVector(new THREE.Vector3(30, 18, 30));
     const count = 900;
     const pos = new Float32Array(count * 3);

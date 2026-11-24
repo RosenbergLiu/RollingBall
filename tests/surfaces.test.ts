@@ -69,23 +69,23 @@ describe('surfaces in play', () => {
 
   it('a tile triggers once when the ball rolls onto it, and not while the ball is in the air', () => {
     const contact = new SurfaceContact();
-    const onGround = { s: at(20.5), u: 0, height: 0.5 };
-    expect(contact.update(level, onGround)?.note).toBe(0);
-    expect(contact.update(level, { ...onGround, s: at(21) })).toBeNull(); // still on it
-    expect(contact.update(level, { ...onGround, s: at(22.5) })?.note).toBe(2); // the next key
+    const onGround = { piece: level, s: at(20.5), u: 0, height: 0.5 };
+    expect(contact.update(onGround)?.note).toBe(0);
+    expect(contact.update({ ...onGround, s: at(21) })).toBeNull(); // still on it
+    expect(contact.update({ ...onGround, s: at(22.5) })?.note).toBe(2); // the next key
     contact.reset();
-    expect(contact.update(level, { ...onGround, height: 2 })).toBeNull(); // airborne
+    expect(contact.update({ ...onGround, height: 2 })).toBeNull(); // airborne
   });
 
   it('boost arrows push forward along the route while the ball rolls on them', () => {
     const contact = new SurfaceContact();
     const accel = { x: 0, y: 0, z: 0 };
-    expect(applySurfaces(level, { s: at(41), u: 1, height: 0.5 }, contact, accel)?.type).toBe('boost');
+    expect(applySurfaces({ piece: level, s: at(41), u: 1, height: 0.5 }, contact, accel)?.type).toBe('boost');
     // The route heads -Z: the push points that way at full boost strength.
     expect(accel.z).toBeCloseTo(-BOOST.accel, 1);
     expect(Math.abs(accel.x)).toBeLessThan(1e-6);
     const off = { x: 0, y: 0, z: 0 };
-    applySurfaces(level, { s: at(41), u: -1, height: 0.5 }, new SurfaceContact(), off);
+    applySurfaces({ piece: level, s: at(41), u: -1, height: 0.5 }, new SurfaceContact(), off);
     expect(off.z).toBe(0);
   });
 
