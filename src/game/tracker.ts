@@ -1,5 +1,5 @@
 import type { Vector3 } from 'three';
-import type { BuiltLevel, BuiltPiece, TrackState } from './level';
+import { BALL_RADIUS, type BuiltLevel, type BuiltPiece, type TrackState } from './level';
 
 export interface Vec3Like {
   x: number;
@@ -19,16 +19,23 @@ export interface Fix {
 const EDGE_MARGIN = 0.3;
 /** …and while it isn't more than this far below its surface (center height)… */
 const BELOW = -0.5;
-/** …nor more than this far above it (a piece far below doesn't catch the ball). */
+/** …nor more than this far above it (for the drop landings found at build time). */
 const ABOVE = 6;
+/**
+ * A ball over its piece counts as on it (not in the air) up to this much higher than resting.
+ * (BALL_RADIUS is only read inside methods: level.ts and this module import each other.)
+ */
+const ON_TRACK_SLACK = 0.6;
+/** The ball touches the surface: its center is within this of one radius above it. */
+const CONTACT = 0.15;
 
 /**
- * Follows the ball along the level's track pieces. On a piece, the nearest-sample search
- * is limited to a window around the previous match, so a ball that falls from an upper
- * spiral loop keeps tracking the loop it fell from (and is detected as fallen) instead of
- * "landing" on the loop below. When the ball leaves its piece (past an end, over an edge)
- * and is over another piece, close above its surface, the tracker moves to that piece:
- * that is how drops and other multi-piece routes work.
+ * Follows the ball along the level's track pieces. While the ball rolls on a piece, the
+ * nearest-sample search is limited to a window around the previous match, so a ball on an
+ * upper spiral loop never jumps to the loop below. When the ball leaves its spot (past an
+ * end, over an edge, into a hole) or is in the air, the tracker looks for the nearest
+ * surface straight under it on every piece, the current one included and at any height:
+ * the ball can land on any platform below it (drops, lower loops, shortcuts, going back).
  */
 export class PathTracker implements TrackState {
   /** The piece the ball is on, or last left. */
@@ -40,6 +47,8 @@ export class PathTracker implements TrackState {
   u = 0;
   /** Height of the ball center above the surface plane. */
   height = 0;
+  /** The tracked spot is under the ball (false: nothing is below it, s/u/height are the last piece's). */
+  over = true;
 
   constructor(
     private readonly level: BuiltLevel,
@@ -54,13 +63,24 @@ export class PathTracker implements TrackState {
     this.index = Math.min(n - 1, Math.max(0, Math.round(s / piece.path.ds)));
     this.s = s;
     this.u = 0;
-    this.height = 0;
+    this.height = BALL_RADIUS;
+    this.over = true;
+  }
+
+  /** The ball is touching the surface it is over (not in the air, not falling). */
+  get grounded(): boolean {
+    return this.over && Math.abs(this.height - BALL_RADIUS) < CONTACT;
   }
 
   update(p: Vec3Like): void {
     const fix = locateOnPiece(this.piece, p, this.index, this.windowMeters);
-    this.apply(this.piece, fix);
-    if (this.level.pieces.length > 1 && !this.isOver(this.piece, fix)) this.findOtherPiece(p);
+    if (this.isOver(this.piece, fix) && fix.height < BALL_RADIUS + ON_TRACK_SLACK) {
+      this.apply(this.piece, fix, true);
+      return;
+    }
+    const below = this.surfaceBelow(p);
+    if (below) this.apply(below.piece, below.fix, true);
+    else this.apply(this.piece, fix, false);
   }
 
   /** Smoothed horizontal direction of travel around the tracked point. */
@@ -74,8 +94,9 @@ export class PathTracker implements TrackState {
     return out.normalize();
   }
 
-  private apply(piece: BuiltPiece, f: Fix): void {
+  private apply(piece: BuiltPiece, f: Fix, over: boolean): void {
     this.piece = piece;
+    this.over = over;
     this.index = f.index;
     this.s = f.s;
     this.u = f.u;
@@ -84,35 +105,29 @@ export class PathTracker implements TrackState {
 
   /** The ball is over this piece: between its ends, inside its edges, not below it. */
   private isOver(piece: BuiltPiece, f: Fix): boolean {
-    return (
-      f.s >= 0 &&
-      f.s <= piece.path.length &&
-      Math.abs(f.u) <= piece.widthAt(f.s) / 2 + EDGE_MARGIN &&
-      f.height > BELOW &&
-      f.height < ABOVE
-    );
+    return f.s >= 0 && f.s <= piece.path.length && Math.abs(f.u) <= piece.widthAt(f.s) / 2 + EDGE_MARGIN && f.height > BELOW;
   }
 
-  /** Moves to the piece right under the ball, if there is one (the closest surface below wins). */
-  private findOtherPiece(p: Vec3Like): void {
+  /** The surface right under the ball on any piece, at any depth (the closest one wins), or null. */
+  private surfaceBelow(p: Vec3Like): { piece: BuiltPiece; fix: Fix } | null {
     let best: { piece: BuiltPiece; fix: Fix } | null = null;
     for (const piece of this.level.pieces) {
-      if (piece === this.piece) continue;
-      const start = closestUnder(piece, p);
+      const start = closestUnder(piece, p, Infinity);
       if (start < 0) continue;
       const fix = locateOnPiece(piece, p, start, this.windowMeters);
       if (!this.isOver(piece, fix)) continue;
       if (!best || fix.height < best.fix.height) best = { piece, fix };
     }
-    if (best) this.apply(best.piece, best.fix);
+    return best;
   }
 }
 
 /**
- * A sample of `piece` the point is horizontally close to and above (or -1): a coarse scan,
- * so that where a piece passes over itself the loop right under the point is picked.
+ * A sample of `piece` the point is horizontally close to and above, by at most `maxAbove`
+ * (or -1): a coarse scan, so that where a piece passes over itself the loop right under the
+ * point is picked.
  */
-export function closestUnder(piece: BuiltPiece, p: Vec3Like): number {
+export function closestUnder(piece: BuiltPiece, p: Vec3Like, maxAbove = ABOVE + 1): number {
   const { samples } = piece.path;
   const reach = piece.maxWidth / 2 + 1;
   let best = -1;
@@ -123,7 +138,7 @@ export function closestUnder(piece: BuiltPiece, p: Vec3Like): number {
     const dz = p.z - q.z;
     if (dx * dx + dz * dz > reach * reach) continue;
     const dy = p.y - q.y;
-    if (dy < BELOW || dy > ABOVE + 1) continue;
+    if (dy < BELOW || dy > maxAbove) continue;
     if (dy < bestDy) {
       bestDy = dy;
       best = k;

@@ -470,54 +470,9 @@ svg.touch.visible {
   color: #fda4af;
   font-variant-numeric: tabular-nums;
 }
-.progress {
-  position: absolute;
-  top: calc(84px + var(--safe-t));
-  left: 50%;
-  width: min(420px, 60%);
-  height: 6px;
-  transform: translateX(-50%);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.15);
-  overflow: hidden;
-}
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
-  transform-origin: left center;
-  transform: scaleX(0);
-}
-/* Checkpoint ticks sit on the progress bar (outside it, so they aren't clipped). */
-.progress-marks {
-  position: absolute;
-  top: calc(84px + 3px + var(--safe-t));
-  left: 50%;
-  width: min(420px, 60%);
-  height: 0;
-  transform: translateX(-50%);
-}
-.cp-mark {
-  position: absolute;
-  top: 0;
-  width: 12px;
-  height: 12px;
-  margin: -6px 0 0 -6px;
-  border-radius: 3px;
-  transform: rotate(45deg);
-  background: rgba(9, 13, 28, 0.85);
-  border: 2px solid rgba(255, 255, 255, 0.55);
-  transition:
-    background 0.2s,
-    box-shadow 0.2s;
-}
-.cp-mark.lit {
-  background: var(--gold);
-  border-color: #fff;
-  box-shadow: 0 0 12px rgba(251, 191, 36, 0.8);
-}
 .cp-toast {
   position: absolute;
-  top: calc(102px + var(--safe-t));
+  top: calc(84px + var(--safe-t));
   left: 50%;
   padding: 8px 18px;
   border-radius: 999px;

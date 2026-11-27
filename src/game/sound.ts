@@ -3,6 +3,7 @@ import type { CoinColor } from './coins';
 /*
  * Sound effects, synthesized with the Web Audio API (no audio files):
  * - rolling: a soft rumble plus a tile click at every tile seam, following the ball's speed;
+ * - wind: air rushing past while the ball is off the ground (a drop, a fall);
  * - coin pickups: a bright chime that climbs in a quick combo, richer for rarer coins.
  *
  * The top half is pure rules (unit-tested in tests/sound.test.ts); the bottom half builds the
@@ -80,6 +81,37 @@ export function rollMix(speed: number, contact: number): RollMix {
     rate: 0.6 + 0.8 * s,
     clickRate: level > 0.5 ? Math.min(ROLL.maxClickRate, v / ROLL.tile) : 0,
   };
+}
+
+// ---------------------------------------------------------------------- wind rules
+
+export const WIND = {
+  /** In the air for less than this (s): silent, so hops over crests stay quiet. */
+  delay: 0.08,
+  /** Then the wind fades in over this long (s). */
+  fadeIn: 0.3,
+  /**
+   * Wind level at full speed. Measured on the final output: about -23 dBFS RMS at full speed
+   * and -27 at a typical 12 m/s fall, level with the rolling bed and well under the chimes.
+   */
+  gain: 0.4,
+  /** At and above this speed (m/s) the wind is at its loudest and brightest. */
+  fullSpeed: 18,
+};
+
+export interface WindMix {
+  /** Wind level (0 = silent). */
+  gain: number;
+  /** Center of the wind's band-pass (Hz): brighter when faster. */
+  cutoff: number;
+}
+
+/** The wind for the ball's speed (m/s) and how long it has been in the air (s). */
+export function windMix(speed: number, airTime: number): WindMix {
+  if (!Number.isFinite(speed) || !Number.isFinite(airTime)) return { gain: 0, cutoff: 450 };
+  const s = Math.min(1, Math.max(0, speed) / WIND.fullSpeed);
+  const fade = smoothstep(WIND.delay, WIND.delay + WIND.fadeIn, airTime);
+  return { gain: WIND.gain * fade * (0.35 + 0.65 * s), cutoff: 450 + 1600 * s };
 }
 
 // ---------------------------------------------------------------------- coin rules
@@ -210,6 +242,19 @@ function rumbleBuffer(ctx: BaseAudioContext): AudioBuffer {
   return buffer;
 }
 
+/** Three seconds of seamless white noise: the raw air of the wind (long enough not to sound looped). */
+function windBuffer(ctx: BaseAudioContext): AudioBuffer {
+  const sr = ctx.sampleRate;
+  const len = Math.floor(sr * 3);
+  const fade = Math.floor(sr * 0.1);
+  const raw = new Float32Array(len + fade);
+  for (let i = 0; i < raw.length; i++) raw[i] = Math.random() * 2 - 1;
+  const buffer = ctx.createBuffer(1, len, sr);
+  const out = buffer.getChannelData(0);
+  for (let i = 0; i < len; i++) out[i] = (i < fade ? raw[i] * (i / fade) + raw[len + i] * (1 - i / fade) : raw[i]) * 0.8;
+  return buffer;
+}
+
 /** A few slightly different tile clicks: a soft steel "tick" over a short wooden "tock". */
 function clickBuffers(ctx: BaseAudioContext): AudioBuffer[] {
   const sr = ctx.sampleRate;
@@ -244,6 +289,10 @@ export class SoundGraph {
   private readonly rumbleSource: AudioBufferSourceNode;
   private readonly clickBus: GainNode;
   private readonly clicks: AudioBuffer[];
+  private readonly wind: GainNode;
+  private readonly windFilter: BiquadFilterNode;
+  private readonly windSource: AudioBufferSourceNode;
+  private readonly gust: OscillatorNode;
   private noise: AudioBuffer | null = null;
 
   constructor(readonly ctx: BaseAudioContext) {
@@ -309,11 +358,42 @@ export class SoundGraph {
     clickTone.frequency.value = 4200;
     this.clickBus.connect(clickTone).connect(this.master);
     this.applyRoll(rollMix(0, 0), 0);
+
+    // Wind: looped noise through a band-pass whose center sways slowly (gusts), so the air
+    // rushing past never sounds like a steady hiss.
+    this.windSource = ctx.createBufferSource();
+    this.windSource.buffer = windBuffer(ctx);
+    this.windSource.loop = true;
+    const windFloor = ctx.createBiquadFilter();
+    windFloor.type = 'highpass';
+    windFloor.frequency.value = 160;
+    this.windFilter = ctx.createBiquadFilter();
+    this.windFilter.type = 'bandpass';
+    this.windFilter.Q.value = 0.9;
+    this.wind = ctx.createGain();
+    this.wind.gain.value = 0;
+    this.windSource.connect(windFloor).connect(this.windFilter).connect(this.wind).connect(this.master);
+    this.gust = ctx.createOscillator();
+    this.gust.frequency.value = 0.45;
+    const gustDepth = ctx.createGain();
+    gustDepth.gain.value = 160;
+    this.gust.connect(gustDepth).connect(this.windFilter.frequency);
+    this.applyWind(windMix(0, 0), 0);
   }
 
-  /** Starts the (silent until mixed in) rumble loop. */
+  /** Starts the (silent until mixed in) rumble and wind loops. */
   start(): void {
     this.rumbleSource.start();
+    this.windSource.start();
+    this.gust.start();
+  }
+
+  /** Glides the wind toward a mix; `smoothing` is the time constant (0 = at once). */
+  applyWind(mix: WindMix, smoothing: number): void {
+    const now = this.ctx.currentTime;
+    const set = (p: AudioParam, v: number, k: number) => (k > 0 ? p.setTargetAtTime(v, now, k) : p.setValueAtTime(v, now));
+    set(this.wind.gain, mix.gain, smoothing);
+    set(this.windFilter.frequency, mix.cutoff, smoothing * 2);
   }
 
   /** Glides the rolling layers toward a mix; `smoothing` is the time constant (0 = at once). */
@@ -505,6 +585,8 @@ export class Sound {
   private clickPhase = 0;
   private paramClock = 0;
   private lastRumble = 0;
+  private windClock = 0;
+  private lastWind = 0;
   private lastCoinAt = 0;
   private offTimer = 0;
   /** Audio could not be set up on this device: stay silent, don't retry on every tap. */
@@ -624,13 +706,30 @@ export class Sound {
     this.lastRumble = mix.rumble;
   }
 
+  /**
+   * Call every frame. `speed` in m/s, `airTime` how long the ball has been off the ground (s);
+   * pass 0 for both whenever there should be no wind. `fade` is how quickly it dies away
+   * (time constant, s): quick on landing, slower after Game Over.
+   */
+  air(speed: number, airTime: number, dt: number, fade = 0.05): void {
+    if (!this.ready()) return;
+    const mix = windMix(speed, airTime);
+    this.windClock -= dt;
+    const silent = mix.gain === 0;
+    if (silent && this.lastWind === 0) return;
+    if (!silent && this.windClock > 0) return;
+    this.windClock = 1 / 30;
+    this.graph!.applyWind(mix, mix.gain < this.lastWind ? fade : 0.08);
+    this.lastWind = mix.gain;
+  }
+
   /** A music tile's note, in semitones from C5. */
   note(semitones: number): void {
     if (!this.ready()) return;
     this.graph!.mallet(this.ctx!.currentTime + 0.005, noteHz(semitones));
   }
 
-  /** The thump of landing after a drop. */
+  /** The thump of landing after a drop or a fall onto a lower platform. */
   land(): void {
     if (!this.ready()) return;
     this.graph!.thump(this.ctx!.currentTime + 0.005);

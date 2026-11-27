@@ -16,9 +16,12 @@ today to ones that need new engine features.
 A steel ball rolls along a floating, fence-less platform. The route can go downhill, run
 flat or climb gently, in any mix. The camera follows behind it and
 the ball stays in the center of the screen. While a finger is on the screen, the ball is
-pushed toward the finger, harder the farther the finger is from the center. Falling off an
-edge or into a hole is **Game Over**, and the ball respawns at the entrance of the level, or
-at the last checkpoint gate it passed (§7.10).
+pushed toward the finger, harder the farther the finger is from the center. A ball that
+rolls off an edge or into a hole lands on whatever platform is below it, any piece, any
+part of the route (shortcuts and going back are allowed). Only falling below the
+**baseline**, 3 m under the level's lowest platform, is **Game Over**, and the ball respawns
+at the entrance of the level, or at the last checkpoint gate it passed (§7.10). The finish
+and checkpoints are gates the ball must go *through* (rolling or flying) to count.
 Coins float along the route, and touching one collects it into the player's wallet (shown
 on the main menu). Reaching the checkered finish line wins. Levels unlock one by one. The audience is young
 and plays on an iPad, so design for kids and for a touchscreen.
@@ -74,8 +77,10 @@ ahead, so:
   branches look different (rim color, width, decoration).
 
 ### 2.5 Respect the player's time
-A fall sends the ball back to the entrance, or to the last checkpoint it passed.
-So a long stretch without a checkpoint makes a fall expensive.
+A fall below the baseline sends the ball back to the entrance, or to the last checkpoint it
+passed. So a long stretch without a checkpoint makes a fall expensive. Where the route passes
+over itself, a ball falling from the upper part lands on the lower one and plays on from
+there: that can be a shortcut, or a step back. Design overpasses knowing players will try it.
 
 - **Standard levels:** **25–45 seconds** of play for a typical child (about 50–110 m of
   authored path at the current speeds). Flat and climbing sections are slower than downhill,
@@ -140,7 +145,7 @@ Facts about the format:
   main route (`segments`, `width`, `holes`, `coins`, `surfaces`), each starting from a point on
   `'main'` or an earlier piece: `from: { piece, s, u?, dy?, turn? }`. One piece may have
   `finish: true` (then the main route ends without a run-out). The tracker moves the ball to
-  any piece it lands on; a fall means below every piece within reach. `pieceProblems()` and
+  any piece it lands on; a fall means below the baseline (3 m under the lowest platform). `pieceProblems()` and
   `overlapProblems()` check them. Design rules and helpers for drops (§7.2) and forks (§7.1)
   come next; until then, levels are one ribbon.
   §5 shows how to fake forks today; §7 proposes the real thing.
@@ -437,8 +442,7 @@ Built (checked by `forkProblems()`):
 - The branch is within 1.3× the length of the way it bypasses, and the two ways really
   separate (at least 2 m of open gap at the middle).
 - No dead ends: every piece but the finish rejoins another or ends in a drop.
-- The tracker follows the piece under the ball, the camera turns with it, and the progress
-  bar counts route distance. The autopilot takes the branches in its `route` (the tests drive
+- The tracker follows the piece under the ball and the camera turns with it. The autopilot takes the branches in its `route` (the tests drive
   both ways, at speed, and check the ball never lifts off at a junction).
 
 ### 7.2 Drops: falling onto a new platform on purpose ✅ built
@@ -485,7 +489,7 @@ Built (checked by `dropProblems()`; the tests also roll a slow ball down every d
   hole-free.
 - The last 6 m before the lip are a launch pad: straight, never climbing, no holes.
 - Look and feel: a glowing amber strip across the lip; landing plays a soft thump and a
-  light tap. The fall rule is "below every platform within reach", and the tracker moves to
+  light tap. A fall is only below the baseline (3 m under the lowest platform), and the tracker moves to
   the landing while the ball is still in the air. The chase camera follows the ball down
   smoothly as it is.
 
@@ -621,8 +625,11 @@ frustrating.
   finish line, so it's worth having.
 
 **How it behaves**
-- **Activation:** a checkpoint activates when the ball passes its line while on the
-  platform. Checkpoints activate in order; passing a later one makes it the respawn point.
+- **Activation:** a checkpoint activates when the ball goes forward through its gate,
+  between the posts and under the bar, rolling or in the air (`src/game/gates.ts`). Landing
+  past a gate without going through it doesn't count. Passing a later gate makes it the
+  respawn point (even if an earlier one was skipped); going back through an earlier gate
+  changes nothing. The finish gate works the same way.
 - **Respawn:** at rest on the gate's line, at the center of the platform, with the camera
   snapped behind the ball. The "Game Over" banner still shows, then the ball appears at the
   gate.
@@ -632,11 +639,10 @@ frustrating.
   and shown on the win screen.
 - **Restart Level** (pause menu) and **Replay** always go back to the entrance and clear all
   checkpoints.
-- **Progress bar:** shows small ticks for checkpoints; reached ones light up.
 - **Feedback:** the gate (two posts, a bar and a line across the track, in the level's rim
   color) is dim until the ball rolls through it, then flashes and stays lit. A soft
   two-note chime plays, the iPad gives a light tap, and "Checkpoint!" pops up under the
-  progress bar. After a fall past a gate, the banner says "Back to the checkpoint…".
+  top bar. After a fall past a gate, the banner says "Back to the checkpoint…".
 
 **Data format**
 ```ts

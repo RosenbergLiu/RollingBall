@@ -2,6 +2,7 @@ import { Vector3 } from 'three';
 import type { CoinSpot } from './coins';
 import type { BuiltSurface, Surface } from './surfaces';
 import { buildPath, pathAt, segmentLength, straight, type PathData, type Segment } from './path';
+import { gateAt, type Gate } from './gates';
 import { closestUnder, locateOnPiece } from './tracker';
 
 export interface Hole {
@@ -73,11 +74,12 @@ export interface PieceDef {
   checkpoints?: number[];
 }
 
-/** A checkpoint gate: the piece it is on, its absolute s there and its route distance. */
+/** A checkpoint gate: the piece it is on, its absolute s there, its route distance and its opening. */
 export interface CheckpointRef {
   piece: BuiltPiece;
   s: number;
   route: number;
+  gate: Gate;
 }
 
 /** The id of a level's own route (its `segments`, `width`, …). */
@@ -158,8 +160,8 @@ function segmentSlopeProblems(segments: Segment[], grade: number, label: string,
   return problems;
 }
 
-/** How far below the surface the ball must drop before it counts as fallen. */
-export const FALL_DEPTH = 2.2;
+/** The baseline is this far under the level's lowest platform: only falling below it is Game Over. */
+export const BASELINE_DEPTH = 3;
 
 export interface BuiltHole extends Hole {
   /** Arc-length scale at the hole's lateral offset (keeps holes round on curves). */
@@ -209,6 +211,10 @@ export interface BuiltLevel extends BuiltPiece {
   /** The piece with the finish line, and the line's absolute s on it. */
   finish: BuiltPiece;
   finishS: number;
+  /** The finish gate's opening: the ball must go through it to win. */
+  finishGate: Gate;
+  /** Height under which the ball has fallen (Game Over). */
+  baseline: number;
   /** Route distance of the finish line. */
   routeLength: number;
   /** Checkpoint gates on any piece, in route order. */
@@ -378,17 +384,19 @@ export function buildLevel(def: LevelDef): BuiltLevel {
   level.pieces = pieces;
   level.finish = finish;
   level.finishS = finishS;
+  level.finishGate = gateAt(finish, finishS, 'finish');
   level.routeLength = finish.routeStart + finishS;
+  const checkpoint = (piece: BuiltPiece, s: number, route: number): CheckpointRef => ({ piece, s, route, gate: gateAt(piece, s, 'checkpoint') });
   level.checkpoints = [
-    ...(def.checkpoints ?? []).map((s) => ({ piece: main, s: s + ENTRANCE_LENGTH, route: s + ENTRANCE_LENGTH })),
+    ...(def.checkpoints ?? []).map((s) => checkpoint(main, s + ENTRANCE_LENGTH, s + ENTRANCE_LENGTH)),
     ...extra.flatMap((d) => {
       const piece = pieces.find((q) => q.id === d.id);
-      return piece ? (d.checkpoints ?? []).map((s) => ({ piece, s, route: piece.routeStart + s })) : [];
+      return piece ? (d.checkpoints ?? []).map((s) => checkpoint(piece, s, piece.routeStart + s)) : [];
     }),
   ].sort((a, b) => a.route - b.route);
   level.spawnS = SPAWN_S;
-  // Falling far below every piece also ends a run (see hasFallen).
   level.minY = Math.min(...pieces.map((q) => q.minY));
+  level.baseline = level.minY - BASELINE_DEPTH;
   return level;
 }
 
@@ -397,11 +405,6 @@ function mergeRef(built: BuiltPiece[], p: PieceDef): { piece: string; s: number 
   if (!p.to) return null;
   const target = built.find((q) => q.id === p.to!.piece);
   return target ? { piece: target.id, s: p.to.s + target.offset } : null;
-}
-
-/** How far along the whole route a tracked ball is, 0..1 (pieces count from where they start). */
-export function routeProgress(level: BuiltLevel, t: TrackState): number {
-  return (t.piece.routeStart + t.s) / level.routeLength;
 }
 
 /**
@@ -590,16 +593,6 @@ export function checkpointProblems(level: BuiltLevel): string[] {
   return problems;
 }
 
-/**
- * Index of the furthest checkpoint the ball has passed (on `piece` at absolute `s`), or
- * `reached` if none further. Checkpoints only ever move forward: rolling back doesn't undo one.
- */
-export function passedCheckpoint(checkpoints: CheckpointRef[], piece: BuiltPiece, s: number, reached: number): number {
-  let k = reached;
-  for (let i = reached + 1; i < checkpoints.length; i++) if (checkpoints[i].piece === piece && s >= checkpoints[i].s) k = i;
-  return k;
-}
-
 /** Minimal view of the path tracker needed by the rules. */
 export interface TrackState {
   /** The piece the ball is on (or last left). s, u and height are relative to it. */
@@ -609,16 +602,10 @@ export interface TrackState {
   height: number;
 }
 
-/** Fallen: well below the piece it was last on (the tracker moves to any piece it lands on). */
-export function hasFallen(level: BuiltLevel, t: TrackState, y: number): boolean {
-  return t.height < -FALL_DEPTH || y < level.minY - 40;
-}
-
-export function hasFinished(level: BuiltLevel, t: TrackState): boolean {
-  return (
-    t.piece === level.finish &&
-    t.s >= level.finishS &&
-    t.height > -0.8 &&
-    Math.abs(t.u) < level.finish.widthAt(t.s) / 2 + 0.6
-  );
+/**
+ * Fallen (Game Over): the ball's center is under the baseline. Above it the ball may still
+ * land on any platform below it.
+ */
+export function hasFallen(level: BuiltLevel, y: number): boolean {
+  return y < level.baseline;
 }

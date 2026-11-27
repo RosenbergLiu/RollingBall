@@ -5,17 +5,8 @@ import { emptyCoinCounts, rollCoins, totalCoins, touchedCoins, type CoinCounts, 
 import { CoinField } from './coinView';
 import { haptics } from './haptics';
 import { Controls } from './input';
-import {
-  BALL_RADIUS,
-  buildLevel,
-  hasFallen,
-  hasFinished,
-  passedCheckpoint,
-  routeProgress,
-  spawnPoint,
-  type BuiltLevel,
-  type BuiltPiece,
-} from './level';
+import { hasFinished, passedCheckpoint } from './gates';
+import { BALL_RADIUS, buildLevel, hasFallen, spawnPoint, type BuiltLevel, type BuiltPiece } from './level';
 import { LEVELS } from './levels';
 import { PhysicsWorld, PHYSICS, type Vec3 } from './physics';
 import { buildPlatform, levelColliders } from './platform';
@@ -54,6 +45,10 @@ type Phase = 'rolling' | 'fallen' | 'won';
 const CAMERA_BACK = 9;
 const CAMERA_UP = 5.5;
 const FALL_RESPAWN_DELAY = 1.7;
+/** Touching down after at least this long in the air (s) plays the landing thump. */
+const LANDING_AIR_TIME = 0.25;
+/** How quickly the wind dies away after Game Over (time constant, s: gone in about half a second). */
+const WIND_FADE_FALLEN = 0.18;
 const MAX_STEPS_PER_FRAME = 6;
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -93,8 +88,8 @@ export class Game {
   private runTime = 0;
   private timerRunning = false;
   private falls = 0;
-  /** The ball moved to another piece (a drop) and hasn't touched down yet. */
-  private landingPending = false;
+  /** How long the ball has been off the ground (s): drives the wind and the landing thump. */
+  private airTime = 0;
   /** Which surface tile (boost, music) the ball is on. */
   private readonly surfaceContact = new SurfaceContact();
   /** Index of the furthest checkpoint passed in this run (-1: none): a fall respawns there. */
@@ -365,7 +360,7 @@ export class Game {
     this.camFrozen = false;
     this.accumulator = 0;
     this.surfaceContact.reset();
-    this.landingPending = false;
+    this.airTime = 0;
     this.updateCamera(0, true);
   }
 
@@ -380,8 +375,7 @@ export class Game {
     if (this.mode === 'play') {
       this.ui.showGameOver(false);
       this.ui.showHint(true);
-      this.ui.updateHud(0, this.falls, 0);
-      this.ui.setCheckpoints(level.checkpoints.map((cp) => cp.route / level.routeLength), -1);
+      this.ui.updateHud(0, this.falls);
     }
   }
 
@@ -392,11 +386,10 @@ export class Game {
   private respawnAtCheckpoint(): void {
     const level = this.level!;
     const cp = level.checkpoints[this.reachedCheckpoint];
-    const s = cp.route;
     this.placeBallAt(cp.s, cp.piece);
     if (this.mode === 'play') {
       this.ui.showGameOver(false);
-      this.ui.updateHud(this.runTime, this.falls, s / level.routeLength);
+      this.ui.updateHud(this.runTime, this.falls);
     }
   }
 
@@ -411,17 +404,15 @@ export class Game {
     }
   }
 
-  /** Lights a checkpoint gate as the ball rolls through it on the platform. */
+  /** Lights a checkpoint gate as the ball goes through it (rolling or in the air). */
   private checkCheckpoints(): void {
     const level = this.level!;
-    const tracker = this.tracker!;
-    if (level.checkpoints.length === 0 || tracker.height < -0.8) return;
-    const k = passedCheckpoint(level.checkpoints, tracker.piece, tracker.s, this.reachedCheckpoint);
+    if (level.checkpoints.length === 0) return;
+    const k = passedCheckpoint(level.checkpoints, this.prevPos, this.currPos, this.reachedCheckpoint);
     if (k === this.reachedCheckpoint) return;
     this.reachedCheckpoint = k;
     this.view?.setCheckpoint(k, this.elapsed);
     if (this.mode !== 'play') return;
-    this.ui.setCheckpoints(level.checkpoints.map((cp) => cp.route / level.routeLength), k);
     this.ui.flashCheckpoint();
     this.sound.checkpoint();
     haptics.checkpoint();
@@ -530,26 +521,25 @@ export class Game {
     const r = this.physics.ball.rotation();
     this.currPos.set(t.x, t.y, t.z);
     this.currQuat.set(r.x, r.y, r.z, r.w);
-    const pieceBefore = tracker.piece;
     tracker.update(this.currPos);
-    if (tracker.piece !== pieceBefore) this.landingPending = true;
-    if (this.landingPending && tracker.height < BALL_RADIUS + 0.15) {
-      // Touched down on the new piece after a drop.
-      this.landingPending = false;
-      if (this.mode === 'play' && this.phase === 'rolling') {
+    if (!tracker.grounded) this.airTime += PHYSICS.dt;
+    else {
+      // Touched down after a drop or a fall onto any platform.
+      if (this.airTime >= LANDING_AIR_TIME && this.mode === 'play' && this.phase === 'rolling') {
         this.sound.land();
         haptics.tap();
       }
+      this.airTime = 0;
     }
     if (this.phase === 'won') {
-      if (hasFallen(level, tracker, t.y)) this.camFrozen = true;
+      if (hasFallen(level, t.y)) this.camFrozen = true;
       return;
     }
     if (this.phase !== 'rolling') return;
     if (this.mode === 'play' && this.timerRunning) this.runTime += PHYSICS.dt;
     if (this.mode === 'play' && touchedCoins(this.coins, this.currPos).length > 0) this.collectCoins();
-    if (hasFallen(level, tracker, t.y)) this.onFall();
-    else if (hasFinished(level, tracker)) this.onWin();
+    if (hasFallen(level, t.y)) this.onFall();
+    else if (hasFinished(level, this.prevPos, this.currPos)) this.onWin();
     else this.checkCheckpoints();
   }
 
@@ -573,6 +563,7 @@ export class Game {
     document.documentElement.classList.toggle('in-menu', this.covered || !this.level);
     if (!this.level || this.covered || (this.paused && !this.renderOnce)) {
       this.sound.roll(0, 0, dt);
+      this.sound.air(0, 0, dt);
       return;
     }
     this.renderOnce = false;
@@ -603,25 +594,26 @@ export class Game {
     this.view?.update(this.elapsed);
     this.surfaceView?.update(this.elapsed);
     this.coinField?.update(this.elapsed);
-    if (this.mode === 'play' && this.level && this.tracker) {
-      this.ui.updateHud(this.runTime, this.falls, routeProgress(this.level, this.tracker));
-    }
+    if (this.mode === 'play') this.ui.updateHud(this.runTime, this.falls);
     this.renderer.render(this.scene, this.camera);
     this.reportFrameRate(rawDt, performance.now() - workStart, physicsMs);
   };
 
   /**
-   * The rolling sound follows the ball's speed while it rolls on the track. It is silent in
-   * the air, when falling (Game Over), paused and on the win screen; menus are handled in frame().
+   * The rolling sound follows the ball's speed while it rolls on the track; the wind plays
+   * while it is in the air. Both are silent when paused and on the win screen; after Game
+   * Over the wind dies away gently. Menus are handled in frame().
    */
   private updateRollingSound(dt: number): void {
     if (this.phase !== 'rolling' || this.paused || !this.tracker) {
       this.sound.roll(0, 0, dt);
+      this.sound.air(0, 0, dt, this.phase === 'fallen' && !this.paused ? WIND_FADE_FALLEN : undefined);
       return;
     }
     // Speed over the last physics step (no allocation, unlike reading the body's velocity).
     const speed = this.currPos.distanceTo(this.prevPos) / PHYSICS.dt;
-    this.sound.roll(speed, contactFactor(this.tracker.height, BALL_RADIUS), dt);
+    this.sound.roll(speed, this.tracker.over ? contactFactor(this.tracker.height, BALL_RADIUS) : 0, dt);
+    this.sound.air(speed, this.airTime, dt);
   }
 
   /** Chase camera behind the ball along the path; always looks straight at the ball. */

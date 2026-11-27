@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { lips } from './drops';
+import { CHECKPOINT_GATE, FINISH_GATE } from './gates';
 import type { BuiltLevel, BuiltPiece, Theme } from './level';
 import { pathAt } from './path';
 import { buildStrip, type MeshArrays, type PlatformMesh } from './platform';
@@ -292,7 +293,8 @@ export class LevelView {
       this.group.add(top, walls, bottom, rim);
     });
 
-    // Finish line (on the piece that has it): checkered strip on the surface plus a gate with a banner.
+    // Finish line (on the piece that has it): checkered strip on the surface plus a gate with a
+    // banner. The ball has to go through the gate (gates.ts) to win.
     const fp = level.finish;
     const checker = checkerTexture();
     const strip = new THREE.Mesh(
@@ -308,7 +310,7 @@ export class LevelView {
     const postGeo = new THREE.CylinderGeometry(0.13, 0.13, 4.6, 20);
     for (const side of [-1, 1]) {
       const post = new THREE.Mesh(postGeo, postMat);
-      post.position.copy(f.pos).addScaledVector(f.right, side * (w / 2 + 0.4));
+      post.position.copy(f.pos).addScaledVector(f.right, side * (w / 2 + FINISH_GATE.post));
       post.position.y += 4.6 / 2 - 0.9;
       post.castShadow = true;
       this.group.add(post);
@@ -323,13 +325,13 @@ export class LevelView {
       this.bannerMat,
     ]);
     banner.position.copy(f.pos);
-    banner.position.y += 3.4;
+    banner.position.y += FINISH_GATE.banner;
     banner.lookAt(banner.position.clone().add(new THREE.Vector3(f.tan.x, 0, f.tan.z)));
     banner.castShadow = true;
     this.group.add(banner);
 
     // Checkpoint gates: two posts and a bar in the level's rim color, and a glowing line
-    // across the track. Dim until the ball rolls through, then lit (after a short flash).
+    // across the track. Dim until the ball goes through (gates.ts), then lit (after a short flash).
     const gatePostGeo = new THREE.CylinderGeometry(0.1, 0.1, 3.8, 16);
     for (const { piece: gp, s: cs } of level.checkpoints) {
       const g = pathAt(gp.path, cs);
@@ -345,14 +347,14 @@ export class LevelView {
       this.group.add(new THREE.Mesh(toGeometry(buildStrip(gp, cs - 0.2, cs + 0.2, 0.02)), lineMat));
       for (const side of [-1, 1]) {
         const post = new THREE.Mesh(gatePostGeo, mat);
-        post.position.copy(g.pos).addScaledVector(g.right, side * (gw / 2 + 0.35));
+        post.position.copy(g.pos).addScaledVector(g.right, side * (gw / 2 + CHECKPOINT_GATE.post));
         post.position.y += 3.8 / 2 - 0.9;
         post.castShadow = true;
         this.group.add(post);
       }
       const bar = new THREE.Mesh(new THREE.BoxGeometry(gw + 0.9, 0.16, 0.16), mat);
       bar.position.copy(g.pos);
-      bar.position.y += 2.8;
+      bar.position.y += CHECKPOINT_GATE.bar;
       bar.lookAt(bar.position.clone().add(new THREE.Vector3(g.tan.x, 0, g.tan.z)));
       bar.castShadow = true;
       this.group.add(bar);

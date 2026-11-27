@@ -5,7 +5,6 @@ import {
   ENTRANCE_LENGTH,
   overlapProblems,
   pieceProblems,
-  routeProgress,
   slopeProblems,
   type LevelDef,
 } from '../src/game/level';
@@ -81,11 +80,9 @@ describe('track pieces', () => {
     expect(p.y).toBeCloseTo(anchor.y - 12, 5);
   });
 
-  it('counts route distance across pieces for the progress bar', () => {
+  it('counts route distance across pieces (checkpoints are ordered by it)', () => {
     expect(lower.routeStart).toBeCloseTo(ENTRANCE_LENGTH + 28.5, 5);
     expect(level.routeLength).toBeCloseTo(lower.routeStart + level.finishS, 5);
-    expect(routeProgress(level, { piece: lower, s: level.finishS, u: 0, height: 0.5 })).toBeCloseTo(1, 5);
-    expect(routeProgress(level, { piece: main, s: 0, u: 0, height: 0.5 })).toBe(0);
   });
 
   it('passes the design rules, with coins and tiles on the lower piece', () => {
@@ -166,6 +163,26 @@ describe('track pieces', () => {
     expect(t.piece).toBe(lower);
     expect(t.height).toBeGreaterThan(2);
     expect(t.height).toBeLessThan(4);
+  });
+
+  it('a ball in the air tracks the nearest platform under it, not the one it was over first', () => {
+    // A third piece 12 m under the lower one, overlapping it from above.
+    const stacked = buildLevel({
+      ...twoPieces,
+      pieces: [...twoPieces.pieces!, { id: 'deep', from: { piece: 'lower', s: 2, dy: -12 }, segments: [straight(30, 0.04)], width: [[0, 12]] }],
+    });
+    const [, low, deep] = stacked.pieces;
+    const t = new PathTracker(stacked);
+    // Falling 5 m over the deep piece: it is the only thing below.
+    const fd = pathAt(deep.path, 20);
+    t.reset(20, deep);
+    t.update(fd.pos.clone().add({ x: 0, y: 5, z: 0 } as never));
+    expect(t.piece).toBe(deep);
+    // Higher up, still over deep but now 1.5 m over the lower piece: the lower piece is nearer.
+    const fl = pathAt(low.path, 20);
+    t.update(fl.pos.clone().add({ x: 0, y: 1.5, z: 0 } as never));
+    expect(t.piece).toBe(low);
+    expect(t.height).toBeCloseTo(1.5, 0);
   });
 });
 

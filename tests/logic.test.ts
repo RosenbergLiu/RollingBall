@@ -94,26 +94,53 @@ describe('tracker', () => {
     expect(t.height).toBeCloseTo(0.5, 2);
   });
 
-  it('does not jump to a lower spiral loop', () => {
-    // A tight 450° spiral: its loops pass about 10 m above each other.
-    const spiral: LevelDef = {
-      id: 99,
-      name: 'spiral',
-      tagline: '',
-      grade: 0.15,
-      segments: [straight(8), left(450, 11), straight(8)],
-      width: [[0, 5]],
-      theme,
-    };
+  // A tight 450° spiral: its loops pass about 10 m above each other.
+  const spiral: LevelDef = {
+    id: 99,
+    name: 'spiral',
+    tagline: '',
+    grade: 0.15,
+    segments: [straight(8), left(450, 11), straight(8)],
+    width: [[0, 5]],
+    theme,
+  };
+
+  it('keeps a ball rolling on an upper spiral loop on that loop', () => {
     const level = buildLevel(spiral);
     const t = new PathTracker(level);
     const s = ENTRANCE_LENGTH + 8 + 10;
     t.reset(s);
     const f = pathAt(level.path, s);
-    // Directly below the current point the lower loop passes ~10 m down.
-    t.update(f.pos.clone().add({ x: 0, y: -9, z: 0 } as never));
+    t.update(f.pos.clone().addScaledVector(f.normal, 0.5));
     expect(Math.abs(t.s - s)).toBeLessThan(1);
-    expect(t.height).toBeLessThan(-8);
+    expect(t.height).toBeCloseTo(0.5, 1);
+    expect(t.grounded).toBe(true);
+  });
+
+  it('moves a ball falling off an upper loop to the loop below it', () => {
+    const level = buildLevel(spiral);
+    const t = new PathTracker(level);
+    const s = ENTRANCE_LENGTH + 8 + 10;
+    t.reset(s);
+    const f = pathAt(level.path, s);
+    // Directly below the current point the lower loop passes ~10 m down: 1 m over it.
+    t.update(f.pos.clone().add({ x: 0, y: -9, z: 0 } as never));
+    expect(t.s - s).toBeGreaterThan(30); // one full loop further along
+    expect(t.over).toBe(true);
+    expect(t.height).toBeGreaterThan(0);
+    expect(t.height).toBeLessThan(2);
+    expect(t.grounded).toBe(false);
+  });
+
+  it('keeps the last piece, not over it, when nothing is below the ball', () => {
+    const level = buildLevel({ ...LEVELS[0] });
+    const t = new PathTracker(level);
+    t.reset(10);
+    const f = pathAt(level.path, 10);
+    t.update(f.pos.clone().addScaledVector(f.right, 20));
+    expect(t.piece).toBe(level);
+    expect(t.over).toBe(false);
+    expect(t.grounded).toBe(false);
   });
 });
 

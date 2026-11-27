@@ -6,10 +6,12 @@ import {
   COMBO,
   CoinCombo,
   ROLL,
+  WIND,
   comboAtTop,
   contactFactor,
   rollMix,
   voiceDuration,
+  windMix,
 } from '../src/game/sound';
 
 const noJitter = () => 0.5;
@@ -62,6 +64,34 @@ describe('rolling sound', () => {
     expect(rollMix(NaN, 1).rumble).toBe(0);
     expect(rollMix(5, NaN).rumble).toBe(0);
     expect(rollMix(-3, 1).rumble).toBe(0);
+  });
+});
+
+describe('wind while in the air', () => {
+  it('is silent on the ground and for a quick hop over a crest', () => {
+    expect(windMix(12, 0).gain).toBe(0);
+    expect(windMix(12, 0.06).gain).toBe(0);
+  });
+
+  it('fades in the longer the ball is in the air, then holds', () => {
+    const gains = [0.1, 0.2, 0.3, 0.4].map((t) => windMix(10, t).gain);
+    for (let i = 1; i < gains.length; i++) expect(gains[i]).toBeGreaterThan(gains[i - 1]);
+    expect(windMix(10, 1).gain).toBeCloseTo(windMix(10, 3).gain, 6);
+  });
+
+  it('gets louder and brighter the faster the ball moves, up to a cap', () => {
+    const slow = windMix(3, 1);
+    const fast = windMix(15, 1);
+    expect(fast.gain).toBeGreaterThan(slow.gain);
+    expect(fast.cutoff).toBeGreaterThan(slow.cutoff);
+    expect(windMix(100, 5).gain).toBeLessThanOrEqual(WIND.gain);
+    expect(windMix(WIND.fullSpeed, 5).gain).toBeCloseTo(WIND.gain, 6);
+  });
+
+  it('is silent for bad input', () => {
+    expect(windMix(Number.NaN, 1).gain).toBe(0);
+    expect(windMix(10, Number.NaN).gain).toBe(0);
+    expect(windMix(-5, 1).gain).toBeGreaterThanOrEqual(0);
   });
 });
 

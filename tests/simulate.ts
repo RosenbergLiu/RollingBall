@@ -1,5 +1,6 @@
 import { Autopilot } from '../src/game/autopilot';
-import { buildLevel, hasFallen, hasFinished, spawnPoint, type LevelDef } from '../src/game/level';
+import { hasFinished } from '../src/game/gates';
+import { buildLevel, hasFallen, spawnPoint, type LevelDef } from '../src/game/level';
 import { PhysicsWorld, PHYSICS, type Vec3 } from '../src/game/physics';
 import { buildPlatform, levelColliders } from '../src/game/platform';
 import { applySurfaces, SurfaceContact } from '../src/game/surfaces';
@@ -42,7 +43,9 @@ export function simulate(
   for (const id of opts.route ?? []) pilot.route.add(id);
   const startS = opts.startS ?? level.spawnS;
   const startPiece = level.pieces.find((p) => p.id === opts.startPiece) ?? level;
-  physics.placeBall(spawnPoint(startPiece, startS));
+  const start = spawnPoint(startPiece, startS);
+  physics.placeBall(start);
+  const prev = { x: start.x, y: start.y, z: start.z };
   tracker.reset(startS, startPiece);
   const accel: Vec3 = { x: 0, y: 0, z: 0 };
   const maxTime = opts.maxTime ?? 120;
@@ -69,14 +72,17 @@ export function simulate(
       maxSpeed = Math.max(maxSpeed, Math.hypot(v.x, v.y, v.z));
       tracker.update(p);
       if (visited[visited.length - 1] !== tracker.piece.id) visited.push(tracker.piece.id);
-      if (hasFallen(level, tracker, p.y)) {
+      if (hasFallen(level, p.y)) {
         outcome = 'fell';
         break;
       }
-      if (hasFinished(level, tracker)) {
+      if (hasFinished(level, prev, p)) {
         outcome = 'won';
         break;
       }
+      prev.x = p.x;
+      prev.y = p.y;
+      prev.z = p.z;
     }
     return { outcome, time: t, s: tracker.s, finishS: level.finishS, maxSpeed, notes, boosts, piece: tracker.piece.id, pieces: visited };
   } finally {

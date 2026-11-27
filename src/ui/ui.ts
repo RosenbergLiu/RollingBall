@@ -118,8 +118,6 @@ const TEMPLATE = /* html */ `
         <button class="btn round" data-action="pause" aria-label="Pause">${PAUSE}</button>
       </div>
     </div>
-    <div class="progress"><div class="progress-fill" data-bind="hud-progress"></div></div>
-    <div class="progress-marks" data-bind="hud-checkpoints" aria-hidden="true"></div>
     <div class="cp-toast" data-bind="cp-toast" role="status">Checkpoint!</div>
     <div class="hint" data-bind="hint">
       <span data-bind="hint-text"></span>
@@ -201,7 +199,6 @@ export class UI {
   private readonly binds = new Map<string, HTMLElement>();
   private lastTimeText = '';
   private lastFalls = -1;
-  private lastProgress = -1;
 
   constructor(
     private readonly root: HTMLElement,
@@ -298,7 +295,7 @@ export class UI {
     this.only('hud');
   }
 
-  updateHud(time: number, falls: number, progress: number): void {
+  updateHud(time: number, falls: number): void {
     const text = formatTime(time);
     if (text !== this.lastTimeText) {
       this.lastTimeText = text;
@@ -307,11 +304,6 @@ export class UI {
     if (falls !== this.lastFalls) {
       this.lastFalls = falls;
       this.bind('hud-falls').textContent = String(falls);
-    }
-    const p = Math.round(Math.min(1, Math.max(0, progress)) * 1000) / 1000;
-    if (p !== this.lastProgress) {
-      this.lastProgress = p;
-      this.bind('hud-progress').style.transform = `scaleX(${p})`;
     }
   }
 
@@ -337,18 +329,7 @@ export class UI {
     if (on) this.setTouch(null);
   }
 
-  /**
-   * Checkpoint ticks on the progress bar: `marks` are positions 0..1 along the route, and
-   * the ones up to `reached` are lit. An empty list hides them.
-   */
-  setCheckpoints(marks: number[], reached: number): void {
-    const el = this.bind('hud-checkpoints');
-    el.innerHTML = marks
-      .map((m, i) => `<span class="cp-mark${i <= reached ? ' lit' : ''}" style="left:${(Math.min(1, Math.max(0, m)) * 100).toFixed(2)}%"></span>`)
-      .join('');
-  }
-
-  /** A short "Checkpoint!" pop under the progress bar. */
+  /** A short "Checkpoint!" pop under the top bar. */
   flashCheckpoint(): void {
     const t = this.bind('cp-toast');
     t.classList.remove('show');

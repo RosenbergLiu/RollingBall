@@ -15,14 +15,20 @@ or gently uphill. Built with
     push. Lift your finger to stop pushing.
   - **Joystick**: a virtual stick at the bottom center of the screen. Push it the way you
     want to roll; the farther you push, the stronger the push. Let go and it springs back.
-- Falling off an edge or into a hole is **Game Over**; the ball respawns at the entrance.
+- Rolling off an edge or into a hole isn't the end: the ball can land on **any platform
+  below**, a lower loop, another road, even a later or an earlier part of the route
+  (shortcuts and going back both work). Only falling below the **baseline**, 3 m under the
+  level's lowest platform, is **Game Over**; the ball respawns at the entrance. While the
+  ball is in the air you hear the wind rush past.
+- The **finish** and the **checkpoints** are gates: the ball has to go through one, rolling
+  or flying, for it to count. Landing past a gate, or going over it, doesn't.
 - Some levels have **special tiles**: orange **boost arrows** push the ball forward with a
   whoosh, and colored **music tiles** each play a note when the ball rolls onto them (follow
   the coins over the Musical Bridge to hear a song).
 - Some tracks **fork**: pick the left or the right way; both meet again further on.
 - Some tracks end at a glowing **lip**: roll off it and land on a wider platform below.
   Every speed lands safely.
-- Long levels have **checkpoints**: glowing gates across the track. Roll through one and it
+- Long levels have **checkpoints**: glowing gates across the track. Go through one and it
   lights up; after a fall the ball comes back at the last gate passed instead of the
   entrance, and the timer keeps running. Restart Level and Replay start from the entrance.
 - Collect **coins** by rolling through them: yellow, blue, purple and orange, from most
@@ -178,8 +184,9 @@ list them under "Other" until the app comes from the App Store or TestFlight.
   spawn/fall/finish rules, checkpoint, piece and overlap rules.
 - `src/game/platform.ts` – builds the platform mesh (top, walls, rim, round holes) and colliders.
 - `src/game/physics.ts` – Rapier world, ball body, touch acceleration and speed cap.
-- `src/game/tracker.ts` – follows the ball along the track (piece, progress, lateral offset,
-  height); moves to another piece when the ball lands on it.
+- `src/game/tracker.ts` – follows the ball along the track (piece, distance along, lateral
+  offset, height); finds the platform under the ball, on any piece, when it is in the air.
+- `src/game/gates.ts` – finish and checkpoint gates: the ball must go through the opening.
 - `src/game/game.ts` – game loop, states, camera, input mapping.
 - `src/game/forks.ts` – forks: the `swing()` and `forkBranch()` helpers and the fork rules.
 - `src/game/drops.ts` – drops: the `dropTo()` helper, the drop rules and where the lips are.

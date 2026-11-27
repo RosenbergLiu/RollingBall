@@ -6,7 +6,6 @@ import {
   holeDistance,
   MAX_GRADE,
   overlapProblems,
-  passedCheckpoint,
   pieceProblems,
   slopeProblems,
   type LevelDef,
@@ -146,9 +145,10 @@ describe('physics rules', () => {
       },
     });
     expect(r.outcome).toBe('fell');
-    // That hole: s = 21 after the 7 m entrance pad, radius 1.6.
+    // That hole: s = 21 after the 7 m entrance pad, radius 1.6. The run ends once the ball is
+    // under the baseline, a few meters further down, so it drifts on a little past the hole.
     expect(r.s).toBeGreaterThan(7 + 21 - 1.6);
-    expect(r.s).toBeLessThan(7 + 21 + 1.6 + 2);
+    expect(r.s).toBeLessThan(7 + 21 + 1.6 + 5);
   });
 
   it('holding a full push forward cannot exceed the speed cap by much', () => {
@@ -275,18 +275,5 @@ describe('checkpoints', () => {
     expect(problems).toMatch(/checkpoint 4 .* after checkpoint 3/);
     expect(problems).toMatch(/checkpoint 4 .* before the finish line/);
     expect(problems).not.toMatch(/checkpoint 3 .* (straight|grade|narrower)/);
-  });
-
-  it('activate in order, only forward: rolling back never undoes one', () => {
-    const level = buildLevel(LEVELS[0]);
-    const other = { ...level, id: 'other' };
-    const cps = [10, 20, 30].map((s) => ({ piece: level as typeof level.pieces[number], s, route: s }));
-    expect(passedCheckpoint(cps, level, 5, -1)).toBe(-1);
-    expect(passedCheckpoint(cps, level, 12, -1)).toBe(0);
-    expect(passedCheckpoint(cps, level, 25, 0)).toBe(1);
-    expect(passedCheckpoint(cps, level, 35, -1)).toBe(2); // the furthest one passed wins
-    expect(passedCheckpoint(cps, level, 5, 1)).toBe(1); // rolled back behind the gate
-    expect(passedCheckpoint(cps, other, 35, -1)).toBe(-1); // only gates on the ball's own piece
-    expect(passedCheckpoint([], level, 50, -1)).toBe(-1);
   });
 });
